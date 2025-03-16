@@ -45,7 +45,14 @@ def main():
         logger.setLevel(logging.DEBUG)
         logger.info("Debug mode is enabled")
 
-    asyncio.run(server.serve())
+    # 确保服务器持续运行
+    try:
+        asyncio.run(server.serve())
+    except KeyboardInterrupt:
+        logger.info("Server stopped by user")
+    except Exception as e:
+        logger.error(f"Server error: {str(e)}")
+        raise
 
 if __name__ == "__main__":
     main()

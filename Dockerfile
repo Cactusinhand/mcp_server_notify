@@ -32,6 +32,7 @@ RUN rm -rf /etc/apt/sources.list.d/* && \
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     dbus \
+    dbus-x11 \
     libdbus-1-3 \
     libnotify-bin \
     libglib2.0-bin \
@@ -54,4 +55,5 @@ COPY --from=builder /app/src /app/src
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH="/app/src"
 
-ENTRYPOINT ["python", "-m", "mcp_server_notify"]
+# 由 pyproject.toml 中的 project.scripts 定义的入口点
+ENTRYPOINT ["mcp-server-notify"]

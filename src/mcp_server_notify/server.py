@@ -61,7 +61,6 @@ class NotificationServer:
         # Plyer通知
         logger.debug("request: %s", request)
         try:
-            # 显式指定通知图标（可选）
             notification.notify(
                 title=request.title,
                 message=request.message,

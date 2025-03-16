@@ -1,17 +1,19 @@
 # MCP Notify Server
 
-一个为 LLM 提供系统通知功能的 Model Context Protocol (MCP) 服务。当完成 agent 任务时，可以通过这个服务发送系统桌面通知。
+[English](README.md) | [中文](README.zh.md)
 
-## 功能特点
+An MCP (Model Context Protocol) service that provides system notification functionality for LLMs. Send desktop notifications when agent tasks are completed.
 
-- 在Agent任务完成后发送系统桌面通知
-- 播放提示音以引起用户注意
-- 跨平台支持（Windows, macOS, Linux）
-- 基于标准 MCP 协议，可与多种 LLM 客户端集成
+## Features
 
-## 安装
+- Send system desktop notifications after agent tasks completion
+- Play alert sounds to grab user attention
+- Cross-platform support (Windows, macOS, Linux)
+- Based on standard MCP protocol, integrates with various LLM clients
 
-### 使用 [uv](https://docs.astral.sh/uv/) 包管理器安装
+## Installation
+
+### Install using [uv](https://docs.astral.sh/uv/) package manager
 
 ```bash
 git clone https://github.com/Cactusinhand/mcp_server_notify.git
@@ -20,23 +22,22 @@ cd mcp_server_notify
 uv venv
 source .venv/Scripts/activate
 
-# 安装到本地
+# Install locally
 uv pip install mcp-server-notify .
-# 等效于
+# Equivalent to
 pip install mcp-server-notify .
 ```
 
-安装完成后，直接调用模块，查看是否安装成功：
+After installation, call the module directly to check if installation was successful:
 ```bash
 python -m mcp_server_notify
 ```
 
+## Usage
 
-## 使用方法
+### Using with Claude Desktop:
 
-### 在 Claude Desktop 上使用：
-
-找到配置文件 `claude_desktop_config.json`
+Find the configuration file `claude_desktop_config.json`
 ```json
 {
     "mcpServers": {
@@ -53,7 +54,7 @@ python -m mcp_server_notify
 }
 ```
 
-如果是安装到了全局，还可以使用 python 命令调用：
+If installed globally, you can also use the python command:
 ```json
 {
     "mcpServers": {
@@ -68,8 +69,8 @@ python -m mcp_server_notify
 }
 ```
 
-### 在 Cursor 上使用：
-找到配置文件 `~/.cursor/mcp.json` 或者： `your_project/.cursor/mcp.json`
+### Using with Cursor:
+Find the configuration file `~/.cursor/mcp.json` or `your_project/.cursor/mcp.json`
 ```json
 {
     "mcpServers": {
@@ -86,31 +87,29 @@ python -m mcp_server_notify
 }
 ```
 
-配置完成后，只需要在给 AI 输入任务的最后，加上一句类似于这样的提示词：`finally, send me a notification when task finished.` 就可以触发了。
+After configuration, simply add a prompt like `finally, send me a notification when task finished.` at the end of your task input to the AI to trigger notifications.
 
-在 Cursor 中可以在 `Cursor Settings` -> `Rules` 里面添加这条提示词作为规则，则不用每次手动输入了。
+In Cursor, you can add this prompt as a rule in `Cursor Settings` -> `Rules` so you don't have to type it manually each time.
 
+### Running with Docker
 
-### 通过Docker运行
+Currently not available due to environment compatibility issues.
+If Docker containers need to trigger host notifications regardless of whether the host OS is Windows, macOS, or Linux, the solution becomes much more complex, and direct use of native notifications is usually not feasible.
 
-由于环境兼容问题，暂时还不行。
-如果 Docker 容器需要触发主机通知，无论主机操作系统是 Windows、macOS 还是 Linux，解决方案将变得复杂得多，直接使用原生通知通常不可行。
+Main issues:
+1. OS-specific notification systems
+Each operating system (Windows, macOS, Linux) has its unique notification mechanism.
 
-主要问题：
-1. 操作系统特定通知系统
-每个操作系统（Windows、macOS、Linux）都有其独特的通知机制。
+2. Docker isolation
+The isolation of Docker containers limits their ability to access host operating system resources directly.
 
-2. Docker 隔离
-Docker 容器的隔离性限制了其直接访问主机操作系统资源的能力。
+3. Dependency management
+Need to handle different notification libraries and dependencies for each operating system.
 
-3. 依赖管理
-需要为每个操作系统处理不同的通知库和依赖项。
-
-
-## 许可证
+## License
 
 MIT
 
-## 贡献
+## Contributions
 
-欢迎提交问题和拉取请求！
+Issues and pull requests are welcome!

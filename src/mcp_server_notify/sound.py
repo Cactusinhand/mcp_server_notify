@@ -89,7 +89,6 @@ class SoundPlayer:
                 for player in players:
                     if os.system(f'which {player} > /dev/null 2>&1') == 0:
                         logger.debug(f"Playing sound with {player}...")
-                        # 使用绝对路径确保权限正确
                         os.system(f'{player} "{f.name}"')
                         break
             finally:
