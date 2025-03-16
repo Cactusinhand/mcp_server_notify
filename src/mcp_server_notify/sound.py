@@ -4,6 +4,9 @@ import tempfile
 import os
 import time
 import io
+import logging
+
+logger = logging.getLogger(__name__)
 
 class SoundPlayer:
     # 这是一个简短的WAV格式"叮"声音的base64编码
@@ -43,14 +46,24 @@ class SoundPlayer:
         """跨平台播放声音"""
         try:
             if self.system == 'Windows':
+                logger.debug("Playing sound on Windows...")
                 self._play_windows()
             elif self.system == 'Darwin':
+                logger.debug("Playing sound on MacOS...")
                 self._play_macos()
             elif self.system == 'Linux':
-                self._play_linux()
+                logger.debug("Playing sound on Linux...")
+                if os.path.exists('/.dockerenv'):
+                    logger.debug("Playing sound on Linux in container...")
+                    self._play_linux_simple()
+                else:
+                    logger.debug("Playing sound on Linux...")
+                    self._play_linux()
             else:
+                logger.debug("Playing sound on fallback...")
                 self._play_fallback()
         except Exception as e:
+            logger.error(f"Sound playback failed: {str(e)}")
             print(f"Sound playback failed: {str(e)}")
 
     def _play_windows(self):
@@ -69,20 +82,33 @@ class SoundPlayer:
 
     def _play_linux(self):
         players = ['paplay', 'aplay', 'play']
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
+            try:
+                f.write(self.sound_data)
+                f.flush()
+                for player in players:
+                    if os.system(f'which {player} > /dev/null 2>&1') == 0:
+                        logger.debug(f"Playing sound with {player}...")
+                        # 使用绝对路径确保权限正确
+                        os.system(f'{player} "{f.name}"')
+                        break
+            finally:
+                try:
+                    os.unlink(f.name)
+                except:
+                    pass
+    def _play_linux_simple(self):
         with tempfile.NamedTemporaryFile(suffix='.wav') as f:
             f.write(self.sound_data)
             f.flush()
-            for player in players:
-                if os.system(f'which {player} > /dev/null 2>&1') == 0:
-                    os.system(f'{player} "{f.name}"')
-                    return
-
+            os.system(f'aplay "{f.name}" 2>/dev/null')
     def _play_fallback(self):
         try:
             import pygame
             pygame.mixer.init()
             sound = pygame.mixer.Sound(io.BytesIO(self.sound_data))
+            logger.debug("Playing sound with pygame...")
             sound.play()
             time.sleep(1)
         except ImportError:
-            print("No sound playback available")
+            logger.error("No sound playback available")

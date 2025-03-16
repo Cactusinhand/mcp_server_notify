@@ -7,9 +7,8 @@ Exports the main server class and version information.
 import argparse
 from .server import NotificationServer
 from .sound import SoundPlayer
-from .schemas import NotificationRequest, NotificationType
+from .schemas import NotificationRequest
 import asyncio
-# 初始化日志配置（可选）
 import logging
 
 # Version should match pyproject.toml
@@ -28,6 +27,7 @@ __all__ = [
 
 logging.basicConfig(
     level=logging.INFO,
+    # filename='path/to/your/logfile.log',
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
@@ -42,9 +42,10 @@ def main():
     
     server = NotificationServer()
     if args.debug:
-        print("Debug mode is enabled")
+        logger.setLevel(logging.DEBUG)
+        logger.info("Debug mode is enabled")
+
     asyncio.run(server.serve())
 
 if __name__ == "__main__":
     main()
-
