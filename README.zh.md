@@ -22,15 +22,35 @@ cd mcp_server_notify
 uv venv
 source .venv/Scripts/activate
 
-# 安装到本地
-uv pip install mcp-server-notify .
-# 等效于
-pip install mcp-server-notify .
+#
+uv pip install mcp-server-notify
+# or
+pip install mcp-server-notify
 ```
 
 安装完成后，直接调用模块，查看是否安装成功：
 ```bash
 python -m mcp_server_notify
+```
+该模块接受 `--debug`, `--log--file` 选项，在调试时可以打开，如：
+```shell
+python -m mcp_server_notify --debug
+python -m mcp_server_notify --debug --log-file=path/to/logfile.log
+```
+
+## 特别依赖
+由于使用了 [Apprise](https://github.com/caronc/apprise) 接口用来实现不同桌面系统的通知发送，需要额外安装一些依赖。
+
+**Windows**
+```shell
+# windows:// minimum requirements
+pip install pywin32
+```
+
+**macOS**
+```shell
+# Make sure terminal-notifier is installed into your system
+brew install terminal-notifier
 ```
 
 

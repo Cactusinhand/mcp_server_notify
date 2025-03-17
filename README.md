@@ -22,15 +22,35 @@ cd mcp_server_notify
 uv venv
 source .venv/Scripts/activate
 
-# Install locally
-uv pip install mcp-server-notify .
-# Equivalent to
-pip install mcp-server-notify .
+uv pip install mcp-server-notify
+# or
+pip install mcp-server-notify
 ```
 
 After installation, call the module directly to check if installation was successful:
 ```bash
 python -m mcp_server_notify
+```
+This module accepts ` --debug ` or `--file ` option, we can use it like:
+```shell
+python -m mcp_server_notify --debug
+python -m mcp_server_notify --debug --log-file=path/to/logfile.log
+```
+
+## Special requirements
+
+We use [Apprise](https://github.com/caronc/apprise) API for our Desktop notification deliver，so we need to install some special requirements in our Desktop
+
+**Windows**
+```shell
+# windows:// minimum requirements
+pip install pywin32
+```
+
+**macOS**
+```shell
+# Make sure terminal-notifier is installed into your system
+brew install terminal-notifier
 ```
 
 ## Usage

@@ -9,6 +9,7 @@ dependencies = [
     "plyer>=2.0",
     "pygame>=2.1; platform_system != 'Windows' and platform_system != 'Darwin'",
     "requests>=2.25.1",
+    "apprise>=1.9.2",
 ]
 
 [project.scripts]
