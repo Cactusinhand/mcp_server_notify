@@ -2,12 +2,12 @@
 
 [English](README.md) | [中文](README.zh.md)
 
-An MCP (Model Context Protocol) service that provides system notification functionality for LLMs. Send desktop notifications when agent tasks are completed.
+A MCP server that send desktop notifications with sound effect when agent tasks are completed.
 
 ## Features
 
 - Send system desktop notifications after agent tasks completion
-- Play alert sounds to grab user attention
+- Play alert sounds to grab user attention, with sound file inside.
 - Cross-platform support (Windows, macOS, Linux)
 - Based on standard MCP protocol, integrates with various LLM clients
 

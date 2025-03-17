@@ -2,12 +2,12 @@
 
 [English](README.md) | [中文](README.zh.md)
 
-一个为 LLM 提供系统通知功能的 Model Context Protocol (MCP) 服务。当完成 agent 任务时，可以通过这个服务发送系统桌面通知。
+一个为 LLM 提供系统通知功能的 Model Context Protocol (MCP) 服务。当完成 agent 任务时，可以通过这个服务发送系统桌面通知并且带有音效。
 
 ## 功能特点
 
 - 在Agent任务完成后发送系统桌面通知
-- 播放提示音以引起用户注意
+- 播放提示音以引起用户注意，内置简单的音效文件
 - 跨平台支持（Windows, macOS, Linux）
 - 基于标准 MCP 协议，可与多种 LLM 客户端集成
 
