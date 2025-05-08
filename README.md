@@ -1,19 +1,19 @@
 [![MseeP.ai Security Assessment Badge](https://mseep.net/pr/cactusinhand-mcp-server-notify-badge.png)](https://mseep.ai/app/cactusinhand-mcp-server-notify) [![PyPI version](https://badge.fury.io/py/mcp-server-notify.svg)](https://badge.fury.io/py/mcp-server-notify)
 
-# MCP Notify Server
+# 📢 MCP Notify Server
 
 [English](README.md) | [中文](README.zh.md)
 
 A MCP server that send desktop notifications with sound effect when agent tasks are completed.
 
-## Features
+## 🥩 Features
 
 - Send system desktop notifications after agent tasks completion
 - Play alert sounds to grab user attention, with sound file inside.
 - Cross-platform support (Windows, macOS, Linux)
 - Based on standard MCP protocol, integrates with various LLM clients
 
-## Installation
+## ⏬ Installation
 
 ### Install using [uv](https://docs.astral.sh/uv/) package manager
 
@@ -39,9 +39,9 @@ python -m mcp_server_notify --debug
 python -m mcp_server_notify --debug --log-file=path/to/logfile.log
 ```
 
-## Special requirements
+## ⚠️❕ Special requirements
 
-We use [Apprise](https://github.com/caronc/apprise) API for our Desktop notification deliver，so we need to install some special requirements in our Desktop
+** We use [Apprise](https://github.com/caronc/apprise) API for our Desktop notification deliver，so we need to install some special requirements in our Desktop **
 
 **Windows**
 ```shell
@@ -55,7 +55,7 @@ pip install pywin32
 brew install terminal-notifier
 ```
 
-## Usage
+## 📚 Usage
 
 ### Using with Claude Desktop:
 
@@ -91,7 +91,7 @@ If installed globally, you can also use the python command:
 }
 ```
 
-### Using with Cursor:
+### ⚡️ Using with Cursor:
 Find the configuration file `~/.cursor/mcp.json` or `your_project/.cursor/mcp.json`
 ```json
 {
@@ -113,7 +113,7 @@ After configuration, simply add a prompt like `finally, send me a notification w
 
 In Cursor, you can add this prompt as a rule in `Cursor Settings` -> `Rules` so you don't have to type it manually each time.
 
-### Running with Docker
+### 🐳 Running with Docker
 
 Currently not available due to environment compatibility issues.
 If Docker containers need to trigger host notifications regardless of whether the host OS is Windows, macOS, or Linux, the solution becomes much more complex, and direct use of native notifications is usually not feasible.
@@ -128,10 +128,10 @@ The isolation of Docker containers limits their ability to access host operating
 3. Dependency management
 Need to handle different notification libraries and dependencies for each operating system.
 
-## License
+## 🧾 License
 
 MIT
 
-## Contributions
+## 💻 Contributions
 
 Issues and pull requests are welcome!
