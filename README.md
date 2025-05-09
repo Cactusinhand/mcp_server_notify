@@ -113,28 +113,28 @@ After configuration, simply add a prompt like `finally, send me a notification w
 
 In Cursor, you can add this prompt as a rule in `Cursor Settings` -> `Rules` so you don't have to type it manually each time.
 
-⚡️ Using with VSCode + Copilot:
+### ⚡️ Using with VSCode + Copilot:
 1.	Install the service manager:
-pip install uv
-2.	Add the service to VSCode settings:
+`pip install uv`
+2.	 Add the service to VSCode settings:
 
-Windows `%APPDATA%\Code\User\settings.json`
-macOS `$HOME/Library/Application\ Support/Code/User/settings.json`
-Linux `$HOME/.config/Code/User/settings.json`
+     Windows `%APPDATA%\Code\User\settings.json`  
+macOS `$HOME/Library/Application\ Support/Code/User/settings.json`  
+Linux `$HOME/.config/Code/User/settings.json`  
 
-```json
-"mcp": {
-    "servers": {
-        "sound-notifier": {
-            "command": "uvx",
-            "args": [
-                "mcp-server-notify"
-            ],
-            "env": {}
-        }
-    }
-}
-```
+	 ```json
+	 "mcp": {
+         "servers": {
+             "sound-notifier": {
+                 "command": "uvx",
+                 "args": [
+                     "mcp-server-notify"
+                 ],
+                 "env": {}
+             }
+         }
+	 }
+	 ```
 3.	Make sure you are using the latest VSCode version — it automatically runs MCP services
 4.	Open VSCode → enable Copilot → switch to agent mode.
 5.	Type # → you will see the #send_notification option.
