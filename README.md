@@ -114,7 +114,7 @@ After configuration, simply add a prompt like `finally, send me a notification w
 In Cursor, you can add this prompt as a rule in `Cursor Settings` -> `Rules` so you don't have to type it manually each time.
 
 ### ⚡️ Using with VSCode + Copilot:
-1.	Install the service manager:
+1.	Install the service manager [uv/uvx](https://docs.astral.sh/uv/):
 `pip install uv`
 2.	 Add the service to VSCode settings:
 
@@ -125,7 +125,7 @@ Linux `$HOME/.config/Code/User/settings.json`
 	 ```json
 	 "mcp": {
          "servers": {
-             "sound-notifier": {
+             "notifier": {
                  "command": "uvx",
                  "args": [
                      "mcp-server-notify"
