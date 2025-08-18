@@ -39,7 +39,7 @@ def test_send_notification_non_blocking(monkeypatch):
 def test_send_notification_uses_to_thread(monkeypatch):
     server = NotificationServer()
 
-    async_to_thread = AsyncMock(side_effect=lambda func, *a, **kw: func(*a, **kw))
+    async_to_thread = AsyncMock()
     monkeypatch.setattr(asyncio, "to_thread", async_to_thread)
 
     async def run_test():
