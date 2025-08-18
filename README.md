@@ -3,7 +3,7 @@
 # 📢 MCP Notify Server
 
 <a href="https://glama.ai/mcp/servers/@Cactusinhand/mcp_server_notify">
-  <img style="max-width: 380px;" src="https://glama.ai/mcp/servers/@Cactusinhand/mcp_server_notify/badge" alt="Glama badge for Notify MCP server" />
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/@Cactusinhand/mcp_server_notify/badge" alt="Glama badge for Notify MCP server" />
 </a>
 
 [English](README.md) | [中文](README.zh.md)
