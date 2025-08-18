@@ -87,7 +87,7 @@ class ValidationError(Exception):
 
 class BaseModel:
     def __init__(self, **data):
-        for field, typ in self.__annotations__.items():
+        for field in self.__annotations__:
             if field in data:
                 setattr(self, field, data[field])
             elif hasattr(self.__class__, field):
