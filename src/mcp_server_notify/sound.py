@@ -5,6 +5,8 @@ import os
 import time
 import io
 import logging
+import shutil
+import subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +80,7 @@ class SoundPlayer:
         with tempfile.NamedTemporaryFile(suffix='.wav') as f:
             f.write(self.sound_data)
             f.flush()
-            os.system(f'afplay "{f.name}"')
+            subprocess.run(['afplay', f.name], check=True)
 
     def _play_linux(self):
         players = ['paplay', 'aplay', 'play']
@@ -87,10 +89,12 @@ class SoundPlayer:
                 f.write(self.sound_data)
                 f.flush()
                 for player in players:
-                    if os.system(f'which {player} > /dev/null 2>&1') == 0:
+                    if shutil.which(player):
                         logger.debug(f"Playing sound with {player}...")
-                        os.system(f'{player} "{f.name}"')
+                        subprocess.run([player, f.name], check=True)
                         break
+                else:
+                    raise RuntimeError('No suitable sound player found')
             finally:
                 try:
                     os.unlink(f.name)
@@ -100,7 +104,7 @@ class SoundPlayer:
         with tempfile.NamedTemporaryFile(suffix='.wav') as f:
             f.write(self.sound_data)
             f.flush()
-            os.system(f'aplay "{f.name}" 2>/dev/null')
+            subprocess.run(['aplay', f.name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
     def _play_fallback(self):
         try:
             import pygame
