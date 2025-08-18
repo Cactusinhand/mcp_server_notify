@@ -6,6 +6,10 @@
 
 # 📢 MCP Notify Server
 
+<a href="https://glama.ai/mcp/servers/@Cactusinhand/mcp_server_notify">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/@Cactusinhand/mcp_server_notify/badge" alt="Glama badge for Notify MCP server" />
+</a>
+
 [English](README.md) | [中文](README.zh.md)
 
 A MCP server that send desktop notifications with sound effect when agent tasks are completed.
