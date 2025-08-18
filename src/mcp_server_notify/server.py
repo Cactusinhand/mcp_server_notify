@@ -9,7 +9,6 @@ from pydantic import ValidationError
 import os
 import logging
 import platform
-import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +100,7 @@ class NotificationServer:
                 logger.debug("Validating request...")
                 req = NotificationRequest(**arguments)
                 logger.debug("Sending notification...")
-                await self._send_notification(req)
+                self._send_notification(req)
                 logger.info("Notification sent successfully")
                 return [TextContent(type="text", text="Notification sent successfully")]
             except ValidationError as e:
@@ -116,7 +115,7 @@ class NotificationServer:
         async with stdio_server() as (read_stream, write_stream):
             await self.server.run(read_stream, write_stream, options)
 
-    async def _send_notification(self, request: NotificationRequest):
+    def _send_notification(self, request: NotificationRequest):
         logger.debug("request: %s", request)
         notification_sent = False
 
@@ -124,11 +123,7 @@ class NotificationServer:
         if self.apprise and len(self.apprise) > 0:
             try:
                 logger.debug("尝试使用 Apprise 发送通知...")
-                result = await asyncio.to_thread(
-                    self.apprise.notify,
-                    title=request.title,
-                    body=request.message,
-                )
+                result = self.apprise.notify(title=request.title, body=request.message)
                 if result:
                     logger.info("Apprise 通知发送成功")
                     notification_sent = True
@@ -141,8 +136,7 @@ class NotificationServer:
         if not notification_sent:
             try:
                 logger.debug("尝试使用 plyer 发送通知...")
-                await asyncio.to_thread(
-                    notification.notify,
+                notification.notify(
                     title=request.title,
                     message=request.message,
                     timeout=request.timeout,
@@ -161,4 +155,4 @@ class NotificationServer:
         # 播放声音
         if request.play_sound:
             logger.debug("播放通知声音...")
-            await asyncio.to_thread(self.sound_player.play)
+            self.sound_player.play()
