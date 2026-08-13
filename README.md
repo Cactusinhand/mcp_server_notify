@@ -43,6 +43,32 @@ Renders as: `[Sisyphus] Build complete`
 
 You can also set a default agent for the server via the `MCP_NOTIFY_DEFAULT_AGENT` environment variable — every notification without an explicit `agent` will then use that prefix. Per-call `agent` overrides the env default.
 
+## 🆕 Optional voice layer (TTS via `ai-calls`)
+
+Every notification can also be read out loud through the [`ai-calls`](https://github.com/...) voice server (Groq Orpheus). The MCP server fires a non-blocking HTTP GET to `http://localhost:3414/speak?text=...` after the toast lands. A readability filter runs first — if more than half of the message is hex hashes, UUIDs, base64, paths, or long digit runs, the spoken line becomes `"<agent> says: there's news, check your screen."` instead of mangling the blob out loud.
+
+**Per-request flag:**
+
+```json
+{
+  "title": "Build complete",
+  "message": "All 42 tests passed.",
+  "agent": "Sisyphus",
+  "voice": true
+}
+```
+
+**Voice defaults:**
+
+- `voice: true` by default on every request.
+- Override globally with `MCP_NOTIFY_VOICE=false` (also accepts `0`, `no`, `off`).
+- Per-request `voice: false` overrides an enabled env default.
+- Per-request `voice: true` re-enables speech even if the env disabled it.
+- Override the TTS voice with the `TTS_VOICE` env var (e.g. `TTS_VOICE=hannah`).
+- Override the voice server URL with `AI_CALLS_URL` (default `http://localhost:3414`).
+
+Failures to reach `ai-calls` are logged at debug level — they never block or fail the toast itself.
+
 ## ⏬ Installation
 
 ### Install using [uv](https://docs.astral.sh/uv/) package manager

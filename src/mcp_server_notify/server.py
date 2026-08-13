@@ -9,6 +9,10 @@ from pydantic import ValidationError
 import os
 import logging
 import platform
+import re
+import threading
+import urllib.parse
+import urllib.request
 from importlib import resources
 
 logger = logging.getLogger(__name__)
@@ -18,6 +22,15 @@ class NotificationServer:
     APP_ID = "com.qxzap.mcp_server_notify"
     APP_DISPLAY_NAME = "MCP Notify"
     DEFAULT_AGENT_ENV = "MCP_NOTIFY_DEFAULT_AGENT"
+    VOICE_ENV = "MCP_NOTIFY_VOICE"
+    AI_CALLS_URL_ENV = "AI_CALLS_URL"
+    AI_CALLS_URL_DEFAULT = "http://localhost:3414"
+    # Cap the spoken line so latency stays low — Orpheus re-rolls prosody if we
+    # push very long inputs, and a 4-second clip is plenty for a heads-up.
+    SPOKEN_MAX_CHARS = 200
+    # Above this fraction of "unreadable" tokens (hex hashes, base64, paths,
+    # long digit runs) we drop the raw text and speak a placeholder instead.
+    UNREADABLE_THRESHOLD = 0.5
 
     def __init__(self):
         logging.basicConfig(level=logging.INFO)
@@ -54,6 +67,87 @@ class NotificationServer:
         if agent:
             return f"[{agent}] {request.title}"
         return request.title
+
+    def _ai_calls_url(self) -> str:
+        return os.environ.get(self.AI_CALLS_URL_ENV, self.AI_CALLS_URL_DEFAULT).rstrip("/")
+
+    def _voice_default_enabled(self) -> bool:
+        raw = os.environ.get(self.VOICE_ENV, "true").strip().lower()
+        return raw not in ("0", "false", "no", "off")
+
+    def _voice_enabled(self, request: NotificationRequest) -> bool:
+        """Per-request voice flag wins over the env default either way."""
+        return bool(request.voice) and self._voice_default_enabled()
+
+    # Tokens TTS will mangle: long hex/hash runs, base64-ish blobs, file paths,
+    # long digit runs, 0x-prefixed addresses, UUIDs, JSON braces.
+    _UNREADABLE_RE = re.compile(
+        r"(?:"
+        r"\b[0-9a-fA-F]{16,}\b"          # hex hash (16+ hex chars)
+        r"|\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"  # UUID
+        r"|[A-Za-z0-9+/=]{24,}"          # base64-ish (also matches long letter runs)
+        r"|\b0x[0-9a-fA-F]{6,}\b"        # 0x addresses
+        r"|[A-Za-z]:\\(?:[^\\\s]+\\)*[^\\\s]+"  # windows path
+        r"|/(?:usr|home|var|etc|opt|tmp)/[^\s]+"  # unix path
+        r"|\b\d{8,}\b"                   # long digit run
+        r")"
+    )
+
+    @classmethod
+    def _unreadable_ratio(cls, text: str) -> float:
+        """Fraction of non-space characters inside unreadable spans (0..1)."""
+        if not text:
+            return 0.0
+        stripped = text.strip()
+        if not stripped:
+            return 0.0
+        non_space = len(re.sub(r"\s+", "", stripped))
+        if non_space == 0:
+            return 0.0
+        bad = sum(m.end() - m.start() for m in cls._UNREADABLE_RE.finditer(stripped))
+        return bad / non_space
+
+    @classmethod
+    def _is_unreadable(cls, text: str) -> bool:
+        return cls._unreadable_ratio(text) > cls.UNREADABLE_THRESHOLD
+
+    @classmethod
+    def _build_spoken(cls, request: NotificationRequest) -> str:
+        """Compose the line ai-calls should read out.
+
+        Returns a placeholder if the message is mostly unreadable; otherwise
+        '[agent] says: <title>. <message>' with hard length cap.
+        """
+        agent = request.agent  # don't fall back to env default for spoken line — the caller asked for this
+        prefix = f"{agent} says" if agent else "Heads up"
+        if cls._is_unreadable(request.message):
+            return f"{prefix}: there's news, check your screen."
+        body = f"{request.title}. {request.message}".strip()
+        if len(body) > cls.SPOKEN_MAX_CHARS:
+            body = body[: cls.SPOKEN_MAX_CHARS - 1].rstrip() + "…"
+        return f"{prefix}: {body}"
+
+    def _speak(self, request: NotificationRequest) -> None:
+        """Fire-and-forget HTTP GET to ai-calls /speak. Never raises."""
+        if not self._voice_enabled(request):
+            return
+        text = self._build_spoken(request)
+        if not text:
+            return
+        voice = os.environ.get("TTS_VOICE", "")
+        params = {"text": text}
+        if voice:
+            params["voice"] = voice
+        url = f"{self._ai_calls_url()}/speak?{urllib.parse.urlencode(params)}"
+
+        def _fire():
+            try:
+                with urllib.request.urlopen(url, timeout=2) as resp:
+                    resp.read(64)  # drain a sliver so the socket closes cleanly
+            except Exception as e:
+                logger.debug(f"ai-calls speak failed: {e}")
+
+        threading.Thread(target=_fire, daemon=True).start()
 
     def _get_linux_desktop_env(self):
         """检测当前 Linux 桌面环境"""
@@ -201,3 +295,7 @@ class NotificationServer:
         if request.play_sound:
             logger.debug("播放通知声音...")
             self.sound_player.play()
+
+        # Voice layer — fire-and-forget HTTP to the ai-calls TTS server.
+        # Independent of sound: callers can have one without the other.
+        self._speak(request)
