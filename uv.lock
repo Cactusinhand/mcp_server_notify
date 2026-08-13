@@ -255,7 +255,7 @@ cli = [
 
 [[package]]
 name = "mcp-server-notify"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "apprise" },
@@ -263,7 +263,6 @@ dependencies = [
     { name = "plyer" },
     { name = "pydantic" },
     { name = "pygame", marker = "sys_platform != 'darwin' and sys_platform != 'win32'" },
-    { name = "requests" },
 ]
 
 [package.dev-dependencies]
@@ -281,7 +280,6 @@ requires-dist = [
     { name = "plyer", specifier = ">=2.0" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pygame", marker = "sys_platform != 'darwin' and sys_platform != 'win32'", specifier = ">=2.1" },
-    { name = "requests", specifier = ">=2.25.1" },
 ]
 
 [package.metadata.requires-dev]

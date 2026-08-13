@@ -1,18 +1,27 @@
 [project]
 name = "mcp-server-notify"
-version = "0.1.0"
+version = "0.3.0"
 description = "MCP Server for system notifications with sound"
 requires-python = ">=3.10"
 dependencies = [
-    "mcp[cli]>=1.0.0",
+    # <2: the 2.x SDK dropped the low-level Server.list_tools decorator this
+    # server is built on — installing unpinned crashes at startup.
+    "mcp[cli]>=1.0.0,<2",
     "pydantic>=2.0",
     "plyer>=2.0",
+    # Without pywin32 Apprise reports "windows:// is disabled" and only the
+    # plyer fallback delivers the toast.
+    "pywin32>=306; platform_system == 'Windows'",
     "pygame>=2.1; platform_system != 'Windows' and platform_system != 'Darwin'",
     "apprise>=1.9.2",
+    "kokoro-onnx>=0.5.0",
+    "sounddevice>=0.5",
 ]
 
 [project.scripts]
 mcp-server-notify = "mcp_server_notify:main"
+notify = "mcp_server_notify.cli:notify"
+notify-setup = "mcp_server_notify.cli:setup"
 
 [build-system]
 requires = ["hatchling"]
@@ -34,4 +43,7 @@ markers = [
 ]
 
 [tool.hatch.build.targets.wheel]
+# assets/ (icons + SKILL.md) is inside the package and tracked in git, so it
+# ships automatically — a force-include here collides with itself and the
+# wheel build fails.
 packages = ["src/mcp_server_notify"]

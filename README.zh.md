@@ -10,6 +10,10 @@
 
 一个为 LLM 提供系统通知功能的 Model Context Protocol (MCP) 服务。当完成 agent 任务时，可以通过这个服务发送系统桌面通知并且带有音效。
 
+> **注意（qxZap fork）：** 本分支新增的功能 —— `notify` 命令行工具、agent skill、
+> 本地离线语音播报（Kokoro-82M）、按 agent 区分的标题前缀 —— 目前只在
+> [英文 README](README.md) 中有文档。本页面仅覆盖上游的基础功能。
+
 ## 功能特点
 
 - 在Agent任务完成后发送系统桌面通知
