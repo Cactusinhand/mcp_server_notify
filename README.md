@@ -43,20 +43,24 @@ Renders as: `[Sisyphus] Build complete`
 
 You can also set a default agent for the server via the `MCP_NOTIFY_DEFAULT_AGENT` environment variable — every notification without an explicit `agent` will then use that prefix. Per-call `agent` overrides the env default.
 
-## 🆕 Optional voice layer (TTS via `ai-calls`)
+## 🆕 Optional voice layer (local GPU TTS via Kokoro-82M)
 
-Every notification can also be read out loud through the [`ai-calls`](https://github.com/...) voice server (Groq Orpheus). The MCP server fires a non-blocking HTTP GET to `http://localhost:3414/speak?text=...` after the toast lands. A readability filter runs first — if more than half of the message is hex hashes, UUIDs, base64, paths, or long digit runs, the spoken line becomes `"<agent> says: there's news, check your screen."` instead of mangling the blob out loud.
+Every notification can also be read out loud through [Kokoro-82M](https://github.com/thewh1teagle/kokoro-onnx) running locally on your GPU (ONNX runtime, ~200MB VRAM). Fully offline, no API keys, no network — once the model is on disk, speech is instant. A readability filter runs first — if more than half of the message is hex hashes, UUIDs, base64, paths, or long digit runs, the spoken line collapses to `"<agent> says: there's news, check your screen."` so TTS doesn't vocalize garbled blobs.
 
-**Per-request flag:**
+**Per-request fields:**
 
 ```json
 {
   "title": "Build complete",
   "message": "All 42 tests passed.",
   "agent": "Sisyphus",
-  "voice": true
+  "voice": true,
+  "speak": "Hey, I'm done — that was fast."
 }
 ```
+
+- `voice: bool = True` — enable speech for this call. Per-request wins over env.
+- `speak: str | None` — agent-supplied spoken line. Wins over auto-composed line. Server still filters and truncates it as a defensive guard.
 
 **Voice defaults:**
 
@@ -64,10 +68,23 @@ Every notification can also be read out loud through the [`ai-calls`](https://gi
 - Override globally with `MCP_NOTIFY_VOICE=false` (also accepts `0`, `no`, `off`).
 - Per-request `voice: false` overrides an enabled env default.
 - Per-request `voice: true` re-enables speech even if the env disabled it.
-- Override the TTS voice with the `TTS_VOICE` env var (e.g. `TTS_VOICE=hannah`).
-- Override the voice server URL with `AI_CALLS_URL` (default `http://localhost:3414`).
+- Voice picker: `MCP_NOTIFY_TTS_VOICE` env var (default `af_bella`). Available: `af_bella`, `af_nicole`, `af_sarah`, `af_sky`, `am_adam`, `am_michael`, `bf_emma`, `bf_isabella`, `bm_george`, `bm_lewis`, plus blends like `af`.
+- Model paths (override with `MCP_NOTIFY_TTS_MODEL` / `MCP_NOTIFY_TTS_VOICES`):
+  - Default model: `D:/Models/kokoro/kokoro-v0_19.onnx`
+  - Default voices: `D:/Models/kokoro/voices.bin`
 
-Failures to reach `ai-calls` are logged at debug level — they never block or fail the toast itself.
+**One-time setup:**
+
+```bash
+mkdir -p D:/Models/kokoro
+curl -L -o D:/Models/kokoro/kokoro-v0_19.onnx \
+  https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files/kokoro-v0_19.onnx
+curl -L -o D:/Models/kokoro/voices.bin \
+  https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files/voices.bin
+pip install kokoro-onnx sounddevice
+```
+
+If the model files aren't present, speech silently no-ops (the toast still works). Failures during synth or playback are logged at debug level and never block or fail the toast itself.
 
 ## ⏬ Installation
 

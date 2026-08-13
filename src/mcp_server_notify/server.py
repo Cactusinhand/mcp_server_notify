@@ -11,8 +11,6 @@ import logging
 import platform
 import re
 import threading
-import urllib.parse
-import urllib.request
 from importlib import resources
 
 logger = logging.getLogger(__name__)
@@ -23,10 +21,14 @@ class NotificationServer:
     APP_DISPLAY_NAME = "MCP Notify"
     DEFAULT_AGENT_ENV = "MCP_NOTIFY_DEFAULT_AGENT"
     VOICE_ENV = "MCP_NOTIFY_VOICE"
-    AI_CALLS_URL_ENV = "AI_CALLS_URL"
-    AI_CALLS_URL_DEFAULT = "http://localhost:3414"
-    # Cap the spoken line so latency stays low — Orpheus re-rolls prosody if we
-    # push very long inputs, and a 4-second clip is plenty for a heads-up.
+    TTS_VOICE_ENV = "MCP_NOTIFY_TTS_VOICE"
+    TTS_MODEL_PATH_ENV = "MCP_NOTIFY_TTS_MODEL"
+    TTS_VOICES_PATH_ENV = "MCP_NOTIFY_TTS_VOICES"
+    TTS_MODEL_PATH_DEFAULT = "D:/Models/kokoro/kokoro-v0_19.onnx"
+    TTS_VOICES_PATH_DEFAULT = "D:/Models/kokoro/voices.bin"
+    TTS_VOICE_DEFAULT = "af_bella"
+    # Cap the spoken line so latency stays low. Kokoro re-rolls prosody on
+    # very long inputs; a 4-second clip is plenty for a heads-up.
     SPOKEN_MAX_CHARS = 200
     # Above this fraction of "unreadable" tokens (hex hashes, base64, paths,
     # long digit runs) we drop the raw text and speak a placeholder instead.
@@ -44,7 +46,30 @@ class NotificationServer:
                 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(self.APP_ID)
             except Exception as e:
                 logger.debug(f"Could not set AppUserModelID: {e}")
+            self._register_aumid_identity()
         self._setup_apprise_targets()
+
+    def _register_aumid_identity(self) -> None:
+        """Name the AUMID in the registry.
+
+        SetCurrentProcessExplicitAppUserModelID alone makes Windows show the
+        raw id ("com.qxzap.mcp_server_notify") as the toast source. Windows
+        reads the friendly name and icon from
+        HKCU\\Software\\Classes\\AppUserModelId\\<AUMID> — this is the
+        shortcut-free way to register a desktop app for toasts.
+        """
+        try:
+            import winreg
+            with winreg.CreateKey(
+                winreg.HKEY_CURRENT_USER,
+                rf"Software\Classes\AppUserModelId\{self.APP_ID}",
+            ) as key:
+                winreg.SetValueEx(key, "DisplayName", 0, winreg.REG_SZ, self.APP_DISPLAY_NAME)
+                icon = self._resolve_asset("icon.ico") or self._resolve_asset("icon.png")
+                if icon:
+                    winreg.SetValueEx(key, "IconUri", 0, winreg.REG_SZ, icon)
+        except Exception as e:
+            logger.debug(f"Could not register AUMID identity: {e}")
 
     @staticmethod
     def _resolve_asset(name: str) -> str | None:
@@ -68,9 +93,6 @@ class NotificationServer:
             return f"[{agent}] {request.title}"
         return request.title
 
-    def _ai_calls_url(self) -> str:
-        return os.environ.get(self.AI_CALLS_URL_ENV, self.AI_CALLS_URL_DEFAULT).rstrip("/")
-
     def _voice_default_enabled(self) -> bool:
         raw = os.environ.get(self.VOICE_ENV, "true").strip().lower()
         return raw not in ("0", "false", "no", "off")
@@ -78,6 +100,37 @@ class NotificationServer:
     def _voice_enabled(self, request: NotificationRequest) -> bool:
         """Per-request voice flag wins over the env default either way."""
         return bool(request.voice) and self._voice_default_enabled()
+
+    @property
+    def _tts(self):
+        """Lazy-loaded Kokoro instance. Built once and reused for the lifetime
+        of the server. Thread-safe enough for our use: Kokoro's create() is
+        reentrant in practice, and if two notifications fire at the same
+        instant the worst case is interleaved audio, not corruption.
+        """
+        cached = getattr(self, "_tts_cache", None)
+        if cached is not None:
+            return cached
+        try:
+            from kokoro_onnx import Kokoro  # local import — only pay the cost if voice is used
+        except ImportError:
+            logger.debug("kokoro_onnx not installed; voice layer disabled.")
+            self._tts_cache = False
+            return False
+        model = os.environ.get(self.TTS_MODEL_PATH_ENV, self.TTS_MODEL_PATH_DEFAULT)
+        voices = os.environ.get(self.TTS_VOICES_PATH_ENV, self.TTS_VOICES_PATH_DEFAULT)
+        if not (os.path.isfile(model) and os.path.isfile(voices)):
+            logger.debug(f"Kokoro model/voices missing at {model} / {voices}; voice layer disabled.")
+            self._tts_cache = False
+            return False
+        try:
+            kokoro = Kokoro(model, voices)
+        except Exception as e:
+            logger.debug(f"Kokoro init failed: {e}")
+            self._tts_cache = False
+            return False
+        self._tts_cache = kokoro
+        return kokoro
 
     # Tokens TTS will mangle: long hex/hash runs, base64-ish blobs, file paths,
     # long digit runs, 0x-prefixed addresses, UUIDs, JSON braces.
@@ -113,13 +166,25 @@ class NotificationServer:
 
     @classmethod
     def _build_spoken(cls, request: NotificationRequest) -> str:
-        """Compose the line ai-calls should read out.
+        """Compose the spoken line.
 
-        Returns a placeholder if the message is mostly unreadable; otherwise
-        '[agent] says: <title>. <message>' with hard length cap.
+        If the agent passed `speak` explicitly, that wins (still filtered as a
+        defensive guard). Otherwise compose from the agent-aware prefix and the
+        title+message, with a hard length cap.
         """
-        agent = request.agent  # don't fall back to env default for spoken line — the caller asked for this
+        agent = request.agent  # don't fall back to env default for spoken line
         prefix = f"{agent} says" if agent else "Heads up"
+
+        # Agent override wins — but still apply the filter so a malformed
+        # line doesn't make the local TTS read out a hash.
+        if request.speak:
+            candidate = request.speak.strip()
+            if cls._is_unreadable(candidate):
+                return f"{prefix}: there's news, check your screen."
+            if len(candidate) > cls.SPOKEN_MAX_CHARS:
+                candidate = candidate[: cls.SPOKEN_MAX_CHARS - 1].rstrip() + "…"
+            return candidate
+
         if cls._is_unreadable(request.message):
             return f"{prefix}: there's news, check your screen."
         body = f"{request.title}. {request.message}".strip()
@@ -128,24 +193,28 @@ class NotificationServer:
         return f"{prefix}: {body}"
 
     def _speak(self, request: NotificationRequest) -> None:
-        """Fire-and-forget HTTP GET to ai-calls /speak. Never raises."""
+        """Speak the notification through the local Kokoro TTS. Never raises."""
         if not self._voice_enabled(request):
             return
         text = self._build_spoken(request)
         if not text:
             return
-        voice = os.environ.get("TTS_VOICE", "")
-        params = {"text": text}
-        if voice:
-            params["voice"] = voice
-        url = f"{self._ai_calls_url()}/speak?{urllib.parse.urlencode(params)}"
+        voice = os.environ.get(self.TTS_VOICE_ENV, self.TTS_VOICE_DEFAULT)
 
+        # Run on a daemon thread so the tool call returns immediately — the
+        # first call also pays the ~2s model load in here, not in the caller.
         def _fire():
             try:
-                with urllib.request.urlopen(url, timeout=2) as resp:
-                    resp.read(64)  # drain a sliver so the socket closes cleanly
+                kokoro = self._tts
+                if not kokoro:
+                    logger.debug("Kokoro unavailable; skipping speech.")
+                    return
+                import sounddevice as sd  # local import — only pay when we actually speak
+                samples, sr = kokoro.create(text, voice=voice, speed=1.0)
+                sd.play(samples, sr)
+                sd.wait()
             except Exception as e:
-                logger.debug(f"ai-calls speak failed: {e}")
+                logger.debug(f"Kokoro speak failed: {e}")
 
         threading.Thread(target=_fire, daemon=True).start()
 

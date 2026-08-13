@@ -1,4 +1,4 @@
-"""Tests for the voice layer (ai-calls TTS bridge)."""
+"""Tests for the voice layer (local Kokoro TTS)."""
 from unittest.mock import patch, MagicMock
 from mcp_server_notify.schemas import NotificationRequest
 from mcp_server_notify.server import NotificationServer
@@ -30,7 +30,6 @@ def test_unreadable_windows_path():
 
 
 def test_unreadable_uuid_with_minor_english():
-    # one English word + a UUID is still mostly unreadable
     assert NotificationServer._is_unreadable("deployed 550e8400-e29b-41d4-a716-446655440000")
 
 
@@ -68,13 +67,45 @@ def test_spoken_unreadable_uses_placeholder():
     line = NotificationServer._build_spoken(req)
     assert "Sisyphus says" in line
     assert "check your screen" in line
-    assert "deadbeef" not in line  # raw blob must not be spoken
+    assert "deadbeef" not in line
 
 
 def test_spoken_truncates_long_body():
     req = NotificationRequest(title="t", message=("All clear. " * 100), agent="Sisyphus")
     line = NotificationServer._build_spoken(req)
-    assert len(line) <= NotificationServer.SPOKEN_MAX_CHARS + 30  # headroom for "Sisyphus says: "
+    assert len(line) <= NotificationServer.SPOKEN_MAX_CHARS + 30
+    assert line.endswith("…")
+
+
+# --- speak override (agent-supplied line) -----------------------------------
+
+def test_spoken_uses_explicit_speak_override():
+    req = NotificationRequest(
+        title="ignored",
+        message="ignored",
+        agent="Sisyphus",
+        speak="Hey, I'm done — that was fast.",
+    )
+    assert NotificationServer._build_spoken(req) == "Hey, I'm done — that was fast."
+
+
+def test_spoken_override_still_filtered_if_unreadable():
+    req = NotificationRequest(
+        title="x",
+        message="y",
+        agent="Sisyphus",
+        speak="sha256 deadbeefcafebabe0123456789abcdef0123456789abcdef0123456789abcdef",
+    )
+    line = NotificationServer._build_spoken(req)
+    assert "deadbeef" not in line
+    assert "check your screen" in line
+
+
+def test_spoken_override_truncated_if_too_long():
+    long = "word " * 200
+    req = NotificationRequest(title="x", message="y", speak=long.strip())
+    line = NotificationServer._build_spoken(req)
+    assert len(line) <= NotificationServer.SPOKEN_MAX_CHARS
     assert line.endswith("…")
 
 
@@ -115,44 +146,95 @@ def test_voice_env_defaults_to_true_when_unset(monkeypatch):
     assert server._voice_enabled(req) is True
 
 
-def test_ai_calls_url_default(monkeypatch):
-    monkeypatch.delenv("AI_CALLS_URL", raising=False)
+# --- Kokoro backend integration --------------------------------------------
+
+def test_tts_lazy_load_returns_false_when_kokoro_missing(monkeypatch):
+    """If kokoro_onnx isn't importable, _tts returns False instead of raising."""
     server = _bare_server()
-    assert server._ai_calls_url() == "http://localhost:3414"
+    # Block the import by hiding the module.
+    monkeypatch.setitem(__import__("sys").modules, "kokoro_onnx", None)
+    assert server._tts is False
 
 
-def test_ai_calls_url_override(monkeypatch):
-    monkeypatch.setenv("AI_CALLS_URL", "http://voice.lan:9000/")
+def test_tts_lazy_load_returns_false_when_models_missing(monkeypatch, tmp_path):
+    """Model files not present at the configured path → _tts returns False."""
+    monkeypatch.setenv("MCP_NOTIFY_TTS_MODEL", str(tmp_path / "missing.onnx"))
+    monkeypatch.setenv("MCP_NOTIFY_TTS_VOICES", str(tmp_path / "missing.bin"))
+    # Force a successful import of kokoro_onnx.
+    fake_mod = MagicMock()
+    fake_mod.Kokoro = MagicMock()
+    monkeypatch.setitem(__import__("sys").modules, "kokoro_onnx", fake_mod)
     server = _bare_server()
-    assert server._ai_calls_url() == "http://voice.lan:9000"  # trailing slash stripped
+    assert server._tts is False
 
 
-# --- _speak does not block + never raises ----------------------------------
+def test_tts_loads_model_only_once(monkeypatch, tmp_path):
+    """Regression: the cache attribute must actually be hit on the 2nd access.
+
+    A private-name (__tts) cache silently never hit, so every notification
+    re-loaded the 325MB ONNX model.
+    """
+    model = tmp_path / "m.onnx"
+    voices = tmp_path / "v.bin"
+    model.write_bytes(b"x")
+    voices.write_bytes(b"x")
+    monkeypatch.setenv("MCP_NOTIFY_TTS_MODEL", str(model))
+    monkeypatch.setenv("MCP_NOTIFY_TTS_VOICES", str(voices))
+    fake_mod = MagicMock()
+    monkeypatch.setitem(__import__("sys").modules, "kokoro_onnx", fake_mod)
+    server = _bare_server()
+    first, second = server._tts, server._tts
+    assert first is second
+    assert fake_mod.Kokoro.call_count == 1
+
 
 def test_speak_skips_when_voice_disabled(monkeypatch):
     import time as _time
     monkeypatch.setenv("MCP_NOTIFY_VOICE", "false")
     server = _bare_server()
-    with patch("urllib.request.urlopen") as mock_open:
+    server._tts_cache = False  # pre-seed the lazy cache so no model load happens
+    with patch("sounddevice.play") as mock_play:
         server._speak(NotificationRequest(title="x", message="y"))
-        # Give the daemon thread a tick to fail — urlopen must NOT have been called.
         _time.sleep(0.05)
-        mock_open.assert_not_called()
+        mock_play.assert_not_called()
 
 
-def test_speak_fires_urlopen_when_enabled():
+def test_speak_invokes_kokoro_when_enabled():
     import time as _time
     server = _bare_server()
-    with patch("urllib.request.urlopen") as mock_open:
-        mock_resp = MagicMock()
-        mock_resp.read.return_value = b""
-        mock_resp.__enter__ = lambda s: mock_resp
-        mock_resp.__exit__ = lambda s, *a: False
-        mock_open.return_value = mock_resp
-        server._speak(NotificationRequest(title="Done", message="All tests passed.", agent="Sisyphus"))
-        # Drain the daemon thread.
+
+    fake_kokoro = MagicMock()
+    fake_kokoro.create.return_value = (b"\x00\x00" * 24000, 24000)
+    server._tts_cache = fake_kokoro
+
+    with patch("sounddevice.play") as mock_play, \
+         patch("sounddevice.wait") as mock_wait:
+        server._speak(NotificationRequest(
+            title="Done",
+            message="All tests passed.",
+            agent="Sisyphus",
+        ))
         _time.sleep(0.1)
-        assert mock_open.called
-        url_arg = mock_open.call_args[0][0]
-        assert "/speak?" in url_arg
-        assert "Sisyphus" in url_arg
+        assert fake_kokoro.create.called
+        text_arg = fake_kokoro.create.call_args[0][0]
+        assert "Sisyphus" in text_arg
+        assert "All tests passed" in text_arg
+        assert mock_play.called
+        assert mock_wait.called
+
+
+def test_speak_uses_explicit_speak_param():
+    import time as _time
+    server = _bare_server()
+    fake_kokoro = MagicMock()
+    fake_kokoro.create.return_value = (b"\x00\x00" * 24000, 24000)
+    server._tts_cache = fake_kokoro
+    with patch("sounddevice.play"), patch("sounddevice.wait"):
+        server._speak(NotificationRequest(
+            title="ignored",
+            message="ignored",
+            speak="A custom crafted line from the agent.",
+        ))
+        _time.sleep(0.1)
+        text_arg = fake_kokoro.create.call_args[0][0]
+        assert text_arg == "A custom crafted line from the agent."
