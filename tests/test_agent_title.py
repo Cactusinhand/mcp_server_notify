@@ -36,3 +36,17 @@ def test_schema_accepts_agent_field():
 def test_schema_agent_optional():
     req = NotificationRequest(title="x", message="y")
     assert req.agent is None
+
+
+# --- delivery backend order -------------------------------------------------
+
+def test_backend_order_prefers_plyer_on_windows(monkeypatch):
+    """Apprise's windows:// reports success but renders nothing on Win10/11 —
+    it must not shadow plyer, or the user only hears the sound."""
+    monkeypatch.setattr("mcp_server_notify.server.platform.system", lambda: "Windows")
+    assert NotificationServer._backend_order("apprise", "plyer") == ["plyer", "apprise"]
+
+
+def test_backend_order_prefers_apprise_elsewhere(monkeypatch):
+    monkeypatch.setattr("mcp_server_notify.server.platform.system", lambda: "Darwin")
+    assert NotificationServer._backend_order("apprise", "plyer") == ["apprise", "plyer"]

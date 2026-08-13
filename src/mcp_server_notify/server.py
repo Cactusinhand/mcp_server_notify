@@ -328,6 +328,21 @@ class NotificationServer:
         async with stdio_server() as (read_stream, write_stream):
             await self.server.run(read_stream, write_stream, options)
 
+    @staticmethod
+    def _backend_order(apprise_fn, plyer_fn) -> list:
+        """Which delivery backend to try first.
+
+        On Windows, Apprise's windows:// plugin uses the legacy pywin32 shell
+        balloon, which Windows 10/11 accepts and then never renders — it
+        reports success, plays the system sound, and shows nothing. plyer's
+        toast does render (and carries our icon), so it goes first there.
+        Everywhere else Apprise is the better path (terminal-notifier on
+        macOS, dbus on Linux).
+        """
+        if platform.system().lower() == "windows":
+            return [plyer_fn, apprise_fn]
+        return [apprise_fn, plyer_fn]
+
     def _send_notification(self, request: NotificationRequest):
         logger.debug("request: %s", request)
         notification_sent = False
@@ -336,24 +351,22 @@ class NotificationServer:
         icon_png = self._resolve_asset("icon.png")
         icon_ico = self._resolve_asset("icon.ico")
 
-        # Apprise path — note: Apprise.notify() does not accept an image kwarg.
-        # Custom icons are delivered by configuring AppriseAsset(image_path_mask=...)
-        # at construction (see __init__). On Windows the AUMID + bundle ICO take effect;
-        # on other platforms Apprise's default theme icon is used.
-        if self.apprise and len(self.apprise) > 0:
+        def send_apprise() -> bool:
+            # Apprise.notify() takes no image kwarg; icons come from the
+            # AppriseAsset configured in __init__.
+            if not (self.apprise and len(self.apprise) > 0):
+                return False
             try:
                 logger.debug("尝试使用 Apprise 发送通知...")
-                result = self.apprise.notify(title=title, body=request.message)
-                if result:
+                if self.apprise.notify(title=title, body=request.message):
                     logger.info("Apprise 通知发送成功")
-                    notification_sent = True
-                else:
-                    logger.warning("Apprise 通知发送失败")
+                    return True
+                logger.warning("Apprise 通知发送失败")
             except Exception as e:
                 logger.error(f"Apprise 通知异常: {str(e)}")
+            return False
 
-        # plyer fallback
-        if not notification_sent:
+        def send_plyer() -> bool:
             try:
                 logger.debug("尝试使用 plyer 发送通知...")
                 plyer_kwargs = {
@@ -368,9 +381,15 @@ class NotificationServer:
                     plyer_kwargs["app_icon"] = icon_png
                 notification.notify(**plyer_kwargs)
                 logger.info("plyer 通知发送成功")
-                notification_sent = True
+                return True
             except Exception as e:
                 logger.error(f"plyer 通知失败: {str(e)}")
+            return False
+
+        for backend in self._backend_order(send_apprise, send_plyer):
+            if backend():
+                notification_sent = True
+                break
 
         # Last-resort log fallback (containers etc.)
         if not notification_sent or os.path.exists("/.dockerenv"):
