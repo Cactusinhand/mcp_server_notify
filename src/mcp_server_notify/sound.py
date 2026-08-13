@@ -68,11 +68,9 @@ class SoundPlayer:
 
     def _play_windows(self):
         import winsound
-        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
-            f.write(self.sound_data)
-            f.close()
-            winsound.PlaySound(f.name, winsound.SND_FILENAME)
-            os.unlink(f.name)
+        # Straight from memory: writing the wav to a temp file first cost ~1.4s
+        # (antivirus scans every new file) to play 15ms of audio.
+        winsound.PlaySound(self.sound_data, winsound.SND_MEMORY)
 
     def _play_macos(self):
         with tempfile.NamedTemporaryFile(suffix='.wav') as f:

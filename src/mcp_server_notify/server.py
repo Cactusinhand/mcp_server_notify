@@ -1,17 +1,16 @@
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
 from plyer import notification
-from apprise import Apprise
 from .schemas import NotificationRequest
 from .sound import SoundPlayer
-from pydantic import ValidationError
+import json
 import os
 import logging
 import platform
 import re
 import threading
 from importlib import resources
+
+# The MCP SDK and Apprise are imported where they're used, not here: the CLI
+# pays ~0.6s of import time for them otherwise and never touches either.
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +23,31 @@ MODEL_FILES = {"kokoro-v0_19.onnx": 325525180, "voices.bin": 5758648}
 def default_model_dir() -> str:
     base = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), ".cache")
     return os.path.join(base, "kokoro")
+
+
+def config_path() -> str:
+    """Where `notify-setup` records the user's choices (voice on/off)."""
+    base = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(base, "mcp-notify", "config.json")
+
+
+def load_config() -> dict:
+    try:
+        with open(config_path(), encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def save_config(**values) -> str:
+    """Merge `values` into the config file and return its path."""
+    cfg = load_config()
+    cfg.update(values)
+    path = config_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2)
+    return path
 
 
 class NotificationServer:
@@ -43,10 +67,7 @@ class NotificationServer:
     UNREADABLE_THRESHOLD = 0.5
 
     def __init__(self):
-        logging.basicConfig(level=logging.INFO)
         self.sound_player = SoundPlayer()
-        self.server = Server("mcp-notification")
-        self.apprise = Apprise()
         # Register stable AUMID so Windows toast shows our name + icon instead of "Python"
         if platform.system().lower() == "windows":
             try:
@@ -55,7 +76,29 @@ class NotificationServer:
             except Exception as e:
                 logger.debug(f"Could not set AppUserModelID: {e}")
             self._register_aumid_identity()
-        self._setup_apprise_targets()
+
+    @property
+    def server(self):
+        """The MCP Server object, built on first touch — importing the SDK
+        costs ~0.6s and the CLI never needs it.
+        """
+        cached = getattr(self, "_server_cache", None)
+        if cached is None:
+            from mcp.server import Server
+            self._server_cache = cached = Server("mcp-notification")
+        return cached
+
+    @property
+    def apprise(self):
+        """Built on first use. On Windows plyer delivers, so this whole import
+        (150 plugins, ~0.3s) is usually never paid for.
+        """
+        cached = getattr(self, "_apprise_cache", None)
+        if cached is None:
+            from apprise import Apprise
+            self._apprise_cache = cached = Apprise()
+            self._setup_apprise_targets()
+        return cached
 
     def _register_aumid_identity(self) -> None:
         """Name the AUMID in the registry.
@@ -102,8 +145,11 @@ class NotificationServer:
         return request.title
 
     def _voice_default_enabled(self) -> bool:
-        raw = os.environ.get(self.VOICE_ENV, "true").strip().lower()
-        return raw not in ("0", "false", "no", "off")
+        raw = os.environ.get(self.VOICE_ENV)
+        if raw is not None:
+            return raw.strip().lower() not in ("0", "false", "no", "off")
+        # Then whatever the user chose during notify-setup; voice on if never asked.
+        return bool(load_config().get("voice", True))
 
     def _voice_enabled(self, request: NotificationRequest) -> bool:
         """Per-request voice flag wins over the env default either way."""
@@ -208,13 +254,17 @@ class NotificationServer:
             body = body[: cls.SPOKEN_MAX_CHARS - 1].rstrip() + "…"
         return f"{prefix}: {body}"
 
-    def _speak(self, request: NotificationRequest) -> None:
-        """Speak the notification through the local Kokoro TTS. Never raises."""
+    def _speak(self, request: NotificationRequest):
+        """Speak through the local Kokoro TTS. Never raises.
+
+        Returns the playback thread (or None), so a short-lived caller like the
+        CLI can wait for exactly that and nothing else.
+        """
         if not self._voice_enabled(request):
-            return
+            return None
         text = self._build_spoken(request)
         if not text:
-            return
+            return None
         voice = os.environ.get(self.TTS_VOICE_ENV, self.TTS_VOICE_DEFAULT)
 
         # Run on a daemon thread so the tool call returns immediately — the
@@ -232,7 +282,9 @@ class NotificationServer:
             except Exception as e:
                 logger.debug(f"Kokoro speak failed: {e}")
 
-        threading.Thread(target=_fire, daemon=True).start()
+        thread = threading.Thread(target=_fire, daemon=True, name="mcp-notify-speech")
+        thread.start()
+        return thread
 
     def _get_linux_desktop_env(self):
         """检测当前 Linux 桌面环境"""
@@ -247,7 +299,7 @@ class NotificationServer:
     def _setup_apprise_targets(self):
         """设置多种 Apprise 通知目标，确保至少有一种可用"""
         system = platform.system().lower()
-        logger.info(f"设置 Apprise 通知，系统：{system}")
+        logger.debug(f"设置 Apprise 通知，系统：{system}")
 
         targets = []
 
@@ -276,7 +328,7 @@ class NotificationServer:
                 result = self.apprise.add(target)
                 if result:
                     success_count += 1
-                    logger.info(f"成功添加通知目标: {target}")
+                    logger.debug(f"成功添加通知目标: {target}")
                 else:
                     logger.warning(f"无法添加通知目标: {target}")
             except Exception as e:
@@ -286,6 +338,12 @@ class NotificationServer:
             logger.warning("没有可用的 Apprise 通知目标，将回退到 plyer 或日志输出")
 
     async def serve(self):
+        # Imported here so the CLI never pays for the MCP SDK (~0.6s).
+        from mcp.server import Server
+        from mcp.server.stdio import stdio_server
+        from mcp.types import Tool, TextContent
+        from pydantic import ValidationError
+
         @self.server.list_tools()
         async def list_tools() -> list[Tool]:
             """List available tools"""
@@ -400,6 +458,6 @@ class NotificationServer:
             logger.debug("播放通知声音...")
             self.sound_player.play()
 
-        # Voice layer — fire-and-forget HTTP to the ai-calls TTS server.
-        # Independent of sound: callers can have one without the other.
-        self._speak(request)
+        # Voice layer — independent of the chime: callers can have one without
+        # the other. Returns the playback thread for callers that must wait.
+        return self._speak(request)

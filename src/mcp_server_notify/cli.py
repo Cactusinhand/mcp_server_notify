@@ -9,19 +9,52 @@ import logging
 import os
 import shutil
 import sys
-import threading
+import time
 import urllib.request
 from pathlib import Path
 
 from .schemas import NotificationRequest
-from .server import MODEL_FILES, MODEL_URL_BASE, NotificationServer, default_model_dir
+from .server import (
+    MODEL_FILES,
+    MODEL_URL_BASE,
+    NotificationServer,
+    config_path,
+    default_model_dir,
+    load_config,
+    save_config,
+)
+
+# plyer shows the toast on its own thread, then sleeps for `timeout` seconds
+# before tearing the window down. Waiting for that would make every call take
+# as long as the toast is visible, so we only give it long enough to draw.
+TOAST_GRACE = 0.35
 
 
-def _drain_speech() -> None:
-    """_speak fires a daemon thread — a CLI process would exit mid-sentence."""
-    for t in threading.enumerate():
-        if t is not threading.current_thread():
-            t.join()
+def _quiet() -> None:
+    """Only surface real failures. Apprise and kokoro-onnx are chatty at INFO
+    and WARNING, and none of it is the user's business on a successful toast.
+    """
+    logging.basicConfig(level=logging.ERROR, format="%(levelname)s: %(message)s")
+    for noisy in ("apprise", "kokoro_onnx", "kokoro"):
+        logging.getLogger(noisy).setLevel(logging.ERROR)
+
+
+def _finish(speech, started: float) -> None:
+    """Wait for speech (if any), let the toast draw, then leave immediately.
+
+    plyer's balloon thread is non-daemon and sleeps for the full `timeout`
+    before tearing its window down, so a normal interpreter exit would block
+    that long. Windows decides how long the toast actually stays on screen, not
+    us, so waiting buys nothing. os._exit skips the join.
+    """
+    if speech is not None:
+        speech.join()
+    remaining = TOAST_GRACE - (time.monotonic() - started)
+    if remaining > 0:
+        time.sleep(remaining)
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
 
 
 def notify() -> int:
@@ -45,7 +78,8 @@ def notify() -> int:
     p.add_argument("--list-voices", action="store_true", help="print available Kokoro voices and exit")
     a = p.parse_args()
 
-    logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
+    _quiet()
+    started = time.monotonic()
     if a.voice:
         os.environ[NotificationServer.TTS_VOICE_ENV] = a.voice
 
@@ -58,16 +92,19 @@ def notify() -> int:
         return 0
 
     if a.say:
-        # Voice-only: skip the full __init__ so we don't pay for Apprise setup.
+        # Voice-only: skip __init__ entirely, nothing but TTS is needed.
         server = NotificationServer.__new__(NotificationServer)
-        server._speak(NotificationRequest(title="", message="", speak=a.say, agent=a.agent))
-        _drain_speech()
+        speech = server._speak(NotificationRequest(title="", message="", speak=a.say, agent=a.agent))
+        if speech is None:
+            print("Voice is off - enable it with: notify-setup --voice yes", file=sys.stderr)
+            return 1
+        speech.join()
         return 0
 
     if not a.title:
         p.error("title is required (or use --say to only speak)")
 
-    NotificationServer()._send_notification(NotificationRequest(
+    speech = NotificationServer()._send_notification(NotificationRequest(
         title=a.title,
         message=a.message,
         agent=a.agent,
@@ -76,7 +113,7 @@ def notify() -> int:
         play_sound=not a.no_sound,
         timeout=a.timeout,
     ))
-    _drain_speech()
+    _finish(speech, started)
     return 0
 
 
@@ -104,15 +141,42 @@ def _skill_targets() -> list[Path]:
     return targets
 
 
+def _ask_voice() -> bool:
+    """Yes/no on the voice extension. A non-interactive run keeps whatever was
+    chosen before, and stays quiet on a fresh machine rather than downloading
+    330 MB nobody asked for.
+    """
+    current = load_config().get("voice")
+    if not sys.stdin.isatty():
+        if current is None:
+            print("Not a terminal - leaving voice off. Enable it with: notify-setup --voice yes")
+        return bool(current)
+    print("\nVoice is optional. Notifications can also be read out loud by a local")
+    print("TTS model - fully offline, no API keys, ~330 MB one-time download.")
+    prompt = "Y/n" if current is not False else "y/N"
+    answer = input(f"Enable voice? [{prompt}] ").strip().lower()
+    if not answer:
+        return current is not False
+    return answer.startswith("y")
+
+
 def setup() -> int:
-    p = argparse.ArgumentParser(prog="notify-setup", description="One-time setup: voice models + agent skill.")
-    p.add_argument("--skip-models", action="store_true", help="don't download Kokoro (toast-only install)")
+    p = argparse.ArgumentParser(
+        prog="notify-setup",
+        description="One-time setup: choose whether you want voice, install the agent skill.",
+        epilog="Change your mind later by re-running: notify-setup --voice no",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("--voice", choices=("yes", "no"), help="skip the prompt, set voice on or off")
     p.add_argument("--skip-skill", action="store_true", help="don't install SKILL.md for agents")
     p.add_argument("--no-test", action="store_true", help="don't fire a test notification at the end")
     a = p.parse_args()
-    logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
+    _quiet()
 
-    if not a.skip_models:
+    want_voice = {"yes": True, "no": False}[a.voice] if a.voice else _ask_voice()
+    print(f"\nVoice: {'on' if want_voice else 'off'}  ({save_config(voice=want_voice)})")
+
+    if want_voice:
         model, voices = NotificationServer.tts_paths()
         print(f"Voice models -> {default_model_dir()}")
         for path in (Path(model), Path(voices)):
@@ -121,14 +185,14 @@ def setup() -> int:
                 print(f"  {path.name} already there, skipping")
                 continue
             if path.name not in MODEL_FILES:
-                print(f"  {path.name} is a custom path — download it yourself")
+                print(f"  {path.name} is a custom path - download it yourself")
                 continue
             _download(path.name, path)
 
     if not a.skip_skill:
         src = NotificationServer._resolve_asset("SKILL.md")
         if not src:
-            print("SKILL.md missing from the package — reinstall.", file=sys.stderr)
+            print("SKILL.md missing from the package - reinstall.", file=sys.stderr)
         else:
             print("Agent skill ->")
             for target in _skill_targets():
@@ -139,16 +203,18 @@ def setup() -> int:
     # Plain ASCII here on purpose: Windows consoles default to cp1252 and
     # mangle anything fancier.
     print("\nMCP server (optional - the CLI works without it):")
-    print(f'  claude mcp add --scope user notify -- {sys.executable} -m mcp_server_notify')
+    print("  claude mcp add --scope user notify -- mcp-server-notify")
 
     if not a.no_test:
         print("\nFiring a test notification...")
-        NotificationServer()._send_notification(NotificationRequest(
+        started = time.monotonic()
+        speech = NotificationServer()._send_notification(NotificationRequest(
             title="Setup complete",
-            message="Notifications and voice are ready.",
+            message="Voice is on." if want_voice else "Toast-only, no voice.",
             speak="Setup's done. You can hear me, so the voice layer works.",
+            voice=want_voice,
             timeout=5,
         ))
-        _drain_speech()
-    print("Done. Try: notify \"Hello\" \"it works\"")
+        _finish(speech, started)
+    print('Done. Try: notify "Hello" "it works"')
     return 0

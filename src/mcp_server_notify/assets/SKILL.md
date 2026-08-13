@@ -77,10 +77,15 @@ Default is `af_bella`. `notify --list-voices` prints the full set — American
 and British, male and female (`af_*`, `am_*`, `bf_*`, `bm_*`). Pick per call
 with `--voice`, or globally with `MCP_NOTIFY_TTS_VOICE`.
 
-Set `MCP_NOTIFY_VOICE=false` to make the whole machine silent (toasts still
-fire). A per-call `--no-voice` silences one notification; there is no flag to
-force voice back on once the env disabled it, by design — if the user turned
-speech off, an agent shouldn't override that.
+Voice is **opt-in**: the user chose yes or no when they ran `notify-setup`, and
+that choice is remembered. If it's off, `notify` still pops toasts, and
+`notify --say` exits 1 saying so — don't try to work around it. Turning it back
+on is the user's call: `notify-setup --voice yes`.
+
+`MCP_NOTIFY_VOICE=false` silences the machine for one session. A per-call
+`--no-voice` silences one notification; there is deliberately no flag to force
+voice back on once it's disabled — if the user turned speech off, an agent
+shouldn't override that.
 
 ## Install (one-time per machine)
 
@@ -89,10 +94,11 @@ pip install mcp-server-notify     # or: uv tool install mcp-server-notify
 notify-setup
 ```
 
-`notify-setup` downloads the Kokoro model (~330 MB, once), copies this
-`SKILL.md` into `~/.claude/skills/notify/` and the opencode skills dir, and
-fires a test notification so you know it works. Re-run it any time to refresh
-the skill file.
+`notify-setup` asks one question — do you want voice? — then installs this
+`SKILL.md` into `~/.claude/skills/notify/` and the opencode skills dir and
+fires a test notification. Answer yes and it downloads the voice model (~330 MB,
+once). Re-run any time to change the answer or refresh the skill file:
+`notify-setup --voice no`.
 
 To also expose this as an MCP tool, `notify-setup` prints the one-line
 `claude mcp add` command at the end. The MCP tool takes the same fields

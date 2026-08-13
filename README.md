@@ -27,11 +27,31 @@ terminal.
 
 ```bash
 pip install mcp-server-notify     # or: uv tool install mcp-server-notify
-notify-setup                      # one-time: voice model, agent skill, test toast
+notify-setup                      # asks one question, installs the skill, test toast
 notify "Hello" "it works"
 ```
 
-That's the whole install. `notify-setup` is interactive-free and re-runnable.
+`notify-setup` asks whether you want **voice**:
+
+```
+Voice is optional. Notifications can also be read out loud by a local
+TTS model - fully offline, no API keys, ~330 MB one-time download.
+Enable voice? [Y/n]
+```
+
+Say no and you get plain desktop notifications, nothing downloaded. Say yes and
+it fetches the model once. Your answer is remembered in
+`%LOCALAPPDATA%\mcp-notify\config.json` (`~/.config/mcp-notify/config.json` on
+Unix) — change your mind any time:
+
+```bash
+notify-setup --voice no      # toast only from now on
+notify-setup --voice yes     # voice back on (downloads the model if needed)
+```
+
+Scripted installs pass `--voice yes|no` to skip the prompt. With no answer and
+no terminal to ask, setup leaves voice off rather than downloading 330 MB
+unasked.
 
 ## 🎛️ Two ways to use this
 
@@ -160,7 +180,7 @@ Renders as `[Sisyphus] Build complete` and says *"Hey, I'm done — that was fas
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `MCP_NOTIFY_DEFAULT_AGENT` | unset | Agent prefix for calls that don't pass one. Per-call `agent` wins. |
-| `MCP_NOTIFY_VOICE` | `true` | `false` / `0` / `no` / `off` silences the whole machine. Toasts still fire. |
+| `MCP_NOTIFY_VOICE` | your setup answer | `false` / `0` / `no` / `off` silences the whole machine. Overrides the config file; toasts still fire. |
 | `MCP_NOTIFY_TTS_VOICE` | `af_bella` | Which Kokoro voice speaks. |
 | `MCP_NOTIFY_TTS_MODEL` | `<data dir>/kokoro-v0_19.onnx` | Path to the ONNX model. |
 | `MCP_NOTIFY_TTS_VOICES` | `<data dir>/voices.bin` | Path to the voice pack. |
@@ -180,8 +200,12 @@ notification never waits on audio.
   applies to `speak` too, as a backstop.
 - **Length cap.** Spoken lines are truncated at 200 characters. Say one or two
   sentences; the detail belongs in the toast.
-- **Never fatal.** No model on disk, no audio device, synth error — speech
-  silently no-ops at debug level and the toast still goes out.
+- **Never fatal.** Voice turned off, no model on disk, no audio device, synth
+  error — speech silently no-ops and the toast still goes out. (`notify --say`
+  is the exception: with nothing to show, it says voice is off and exits 1.)
+- **Speed.** A toast lands in ~0.6s; with voice, ~3s, most of it the spoken
+  audio itself. The model loads once per process, so the MCP server pays it on
+  the first notification only.
 - `notify --list-voices` prints the full set: `af_*` / `am_*` (American female
   and male), `bf_*` / `bm_*` (British), plus blends like `af`.
 

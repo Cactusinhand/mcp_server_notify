@@ -141,9 +141,25 @@ def test_voice_env_accepts_common_falses(monkeypatch):
 
 def test_voice_env_defaults_to_true_when_unset(monkeypatch):
     monkeypatch.delenv("MCP_NOTIFY_VOICE", raising=False)
+    monkeypatch.setattr("mcp_server_notify.server.load_config", dict)
     server = _bare_server()
     req = NotificationRequest(title="x", message="y")
     assert server._voice_enabled(req) is True
+
+
+def test_voice_falls_back_to_setup_choice(monkeypatch):
+    """notify-setup writes {"voice": false}; that must silence speech."""
+    monkeypatch.delenv("MCP_NOTIFY_VOICE", raising=False)
+    monkeypatch.setattr("mcp_server_notify.server.load_config", lambda: {"voice": False})
+    server = _bare_server()
+    assert server._voice_enabled(NotificationRequest(title="x", message="y")) is False
+
+
+def test_voice_env_overrides_setup_choice(monkeypatch):
+    monkeypatch.setenv("MCP_NOTIFY_VOICE", "true")
+    monkeypatch.setattr("mcp_server_notify.server.load_config", lambda: {"voice": False})
+    server = _bare_server()
+    assert server._voice_enabled(NotificationRequest(title="x", message="y")) is True
 
 
 # --- Kokoro backend integration --------------------------------------------
