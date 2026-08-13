@@ -5,7 +5,7 @@
 [![Trust Score](https://archestra.ai/mcp-catalog/api/badge/quality/Cactusinhand/mcp_server_notify)](https://archestra.ai/mcp-catalog/Cactusinhand__mcp_server_notify)
 
 
-# 📢 MCP Notify Server
+# 📢 MCP Notify Server (qxZap fork)
 
 
 
@@ -13,12 +13,35 @@
 
 A MCP server that send desktop notifications with sound effect when agent tasks are completed.
 
+> Fork notes (qxZap):
+> - Windows toast now shows **"MCP Notify"** (not "Python") via a registered AppUserModelID.
+> - Bundled notification-bot icon (SVG + PNG + ICO) shipped under `src/mcp_server_notify/assets/`.
+> - Per-agent title prefix via the new `agent` parameter (see below).
+
 ## 🥩 Features
 
 - Send system desktop notifications after agent tasks completion
 - Play alert sounds to grab user attention, with sound file inside.
 - Cross-platform support (Windows, macOS, Linux)
+- Stable Windows AppUserModelID + bundled bot icon (Windows toast source shows "MCP Notify", not "Python")
+- Per-agent title prefix to distinguish which agent triggered the notification
 - Based on standard MCP protocol, integrates with various LLM clients
+
+## 🆕 Per-agent title prefix
+
+Pass an optional `agent` field on the request. When set, the title is rendered as `[agent] <title>` so you can tell at a glance which agent is calling for attention.
+
+```json
+{
+  "title": "Build complete",
+  "message": "All 42 tests passed",
+  "agent": "Sisyphus"
+}
+```
+
+Renders as: `[Sisyphus] Build complete`
+
+You can also set a default agent for the server via the `MCP_NOTIFY_DEFAULT_AGENT` environment variable — every notification without an explicit `agent` will then use that prefix. Per-call `agent` overrides the env default.
 
 ## ⏬ Installation
 

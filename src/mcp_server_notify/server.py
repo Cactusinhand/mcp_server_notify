@@ -9,17 +9,51 @@ from pydantic import ValidationError
 import os
 import logging
 import platform
+from importlib import resources
 
 logger = logging.getLogger(__name__)
 
 
 class NotificationServer:
+    APP_ID = "com.qxzap.mcp_server_notify"
+    APP_DISPLAY_NAME = "MCP Notify"
+    DEFAULT_AGENT_ENV = "MCP_NOTIFY_DEFAULT_AGENT"
+
     def __init__(self):
         logging.basicConfig(level=logging.INFO)
         self.sound_player = SoundPlayer()
         self.server = Server("mcp-notification")
         self.apprise = Apprise()
+        # Register stable AUMID so Windows toast shows our name + icon instead of "Python"
+        if platform.system().lower() == "windows":
+            try:
+                import ctypes
+                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(self.APP_ID)
+            except Exception as e:
+                logger.debug(f"Could not set AppUserModelID: {e}")
         self._setup_apprise_targets()
+
+    @staticmethod
+    def _resolve_asset(name: str) -> str | None:
+        """Resolve a bundled asset path. Returns absolute path or None if missing."""
+        try:
+            asset_root = resources.files("mcp_server_notify").joinpath("assets")
+            candidate = asset_root.joinpath(name)
+            # importlib.resources >= 3.9 returns a Traversable; convert to real path
+            with resources.as_file(candidate) as p:
+                return str(p) if p.exists() else None
+        except Exception:
+            return None
+
+    def _default_agent(self) -> str | None:
+        val = os.environ.get(self.DEFAULT_AGENT_ENV, "").strip()
+        return val or None
+
+    def _resolve_title(self, request: NotificationRequest) -> str:
+        agent = request.agent or self._default_agent()
+        if agent:
+            return f"[{agent}] {request.title}"
+        return request.title
 
     def _get_linux_desktop_env(self):
         """检测当前 Linux 桌面环境"""
@@ -119,11 +153,18 @@ class NotificationServer:
         logger.debug("request: %s", request)
         notification_sent = False
 
-        # 尝试使用 Apprise 发送
+        title = self._resolve_title(request)
+        icon_png = self._resolve_asset("icon.png")
+        icon_ico = self._resolve_asset("icon.ico")
+
+        # Apprise path — note: Apprise.notify() does not accept an image kwarg.
+        # Custom icons are delivered by configuring AppriseAsset(image_path_mask=...)
+        # at construction (see __init__). On Windows the AUMID + bundle ICO take effect;
+        # on other platforms Apprise's default theme icon is used.
         if self.apprise and len(self.apprise) > 0:
             try:
                 logger.debug("尝试使用 Apprise 发送通知...")
-                result = self.apprise.notify(title=request.title, body=request.message)
+                result = self.apprise.notify(title=title, body=request.message)
                 if result:
                     logger.info("Apprise 通知发送成功")
                     notification_sent = True
@@ -132,27 +173,31 @@ class NotificationServer:
             except Exception as e:
                 logger.error(f"Apprise 通知异常: {str(e)}")
 
-        # 如果 Apprise 失败，尝试 plyer
+        # plyer fallback
         if not notification_sent:
             try:
                 logger.debug("尝试使用 plyer 发送通知...")
-                notification.notify(
-                    title=request.title,
-                    message=request.message,
-                    timeout=request.timeout,
-                    app_name="mcp-notification",
-                )
+                plyer_kwargs = {
+                    "title": title,
+                    "message": request.message,
+                    "timeout": request.timeout,
+                    "app_name": self.APP_DISPLAY_NAME,
+                }
+                if icon_ico:
+                    plyer_kwargs["app_icon"] = icon_ico
+                elif icon_png:
+                    plyer_kwargs["app_icon"] = icon_png
+                notification.notify(**plyer_kwargs)
                 logger.info("plyer 通知发送成功")
                 notification_sent = True
             except Exception as e:
                 logger.error(f"plyer 通知失败: {str(e)}")
 
-        # 如果两种方法都失败或在容器环境中，使用日志输出
+        # Last-resort log fallback (containers etc.)
         if not notification_sent or os.path.exists("/.dockerenv"):
-            logger.info(f"通知：{request.title} - {request.message}")
-            print(f"Notification: {request.title} - {request.message}")
+            logger.info(f"通知：{title} - {request.message}")
+            print(f"Notification: {title} - {request.message}")
 
-        # 播放声音
         if request.play_sound:
             logger.debug("播放通知声音...")
             self.sound_player.play()

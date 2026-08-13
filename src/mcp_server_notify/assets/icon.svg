@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Soft circular badge background -->
+  <circle cx="128" cy="128" r="120" fill="#ede9fe"/>
+  <!-- Antenna stem -->
+  <rect x="120" y="36" width="16" height="28" rx="8" fill="#7c3aed"/>
+  <!-- Antenna bulb -->
+  <circle cx="128" cy="32" r="14" fill="#a78bfa"/>
+  <circle cx="128" cy="32" r="7" fill="#f5f3ff"/>
+  <!-- Head body -->
+  <rect x="48" y="72" width="160" height="140" rx="48" fill="#7c3aed"/>
+  <!-- Face plate -->
+  <rect x="64" y="96" width="128" height="92" rx="32" fill="#4c1d95"/>
+  <!-- Left eye -->
+  <circle cx="100" cy="132" r="16" fill="#c4b5fd"/>
+  <circle cx="104" cy="128" r="6" fill="#ffffff"/>
+  <!-- Right eye -->
+  <circle cx="156" cy="132" r="16" fill="#c4b5fd"/>
+  <circle cx="160" cy="128" r="6" fill="#ffffff"/>
+  <!-- Mouth / speaker grille -->
+  <rect x="104" y="160" width="48" height="10" rx="5" fill="#a78bfa"/>
+  <!-- Side ear left -->
+  <rect x="32" y="118" width="20" height="40" rx="10" fill="#6d28d9"/>
+  <!-- Side ear right -->
+  <rect x="204" y="118" width="20" height="40" rx="10" fill="#6d28d9"/>
+  <!-- Notification ding badge -->
+  <circle cx="196" cy="84" r="28" fill="#f43f5e"/>
+  <circle cx="196" cy="84" r="28" fill="none" stroke="#ffffff" stroke-width="6"/>
+  <!-- Ding highlight -->
+  <circle cx="188" cy="76" r="8" fill="#fda4af" opacity="0.85"/>
+</svg>

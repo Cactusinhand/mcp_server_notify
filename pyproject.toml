@@ -1,6 +1,6 @@
 [project]
 name = "mcp-server-notify"
-version = "0.1.0"
+version = "0.2.0"
 description = "MCP Server for system notifications with sound"
 requires-python = ">=3.10"
 dependencies = [
@@ -35,3 +35,6 @@ markers = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mcp_server_notify"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/mcp_server_notify/assets" = "mcp_server_notify/assets"
