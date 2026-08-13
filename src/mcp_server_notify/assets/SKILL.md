@@ -47,8 +47,9 @@ piece of work, not a play-by-play.
 ## Writing the spoken line
 
 `--speak` is where the difference between a status page and a colleague lives.
-Without it the server composes `"<agent> says: <title>. <message>"`, which is
-fine but robotic. With it, say what you'd actually say out loud:
+Without it the server just reads `"<title>. <message>"` (prefixed with
+`"<agent> says: "` when an agent is named), which is fine but robotic. With it,
+say what you'd actually say out loud:
 
 ```
 notify "Tests green" "35 passed in 2.5s" --agent Sisyphus \
@@ -65,8 +66,8 @@ Rules that matter for speech:
 - One or two sentences. It's a hallway remark, not a summary.
 
 The server runs a readability filter as a backstop: if a line is mostly hex,
-UUIDs, base64, paths, or long digit runs, it speaks `"<agent> says: there's
-news, check your screen."` instead of vocalizing the blob.
+UUIDs, base64, paths, or long digit runs, it speaks `"There's news, check your
+screen."` instead of vocalizing the blob.
 
 ## Agent identity
 

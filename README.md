@@ -63,7 +63,12 @@ like — they don't conflict.
 | Setup | register with your MCP client | `notify-setup`, nothing to register |
 | Runs | background stdio process, always on | only while a notification is being sent |
 | The agent calls it via | the `send_notification` tool | a shell command |
-| Best for | clients with MCP support | agents without MCP, cron jobs, shell scripts, your own tooling |
+| Best for | clients with no shell of their own (Claude Desktop) | anything with a shell tool — Claude Code, opencode, Cursor, cron, your own scripts |
+
+**Which one?** If your agent can run shell commands, the skill is enough and
+costs nothing when idle — no server process, no per-client registration. Reach
+for the MCP server when the client has no shell, or when you'd rather the model
+see a typed tool than a command.
 
 ### Route A — CLI + skill (no server)
 
@@ -194,10 +199,13 @@ Kokoro-82M runs locally through ONNX runtime (~200 MB VRAM, or CPU). The model
 loads once per process and is reused; speech runs on a background thread, so a
 notification never waits on audio.
 
+- **No stock phrases.** Without `speak`, the line is just *"<title>.
+  <message>"* — an agent name, when given, introduces itself first
+  (*"Sisyphus says: …"*). Nothing else is bolted on.
 - **Readability filter.** If a message is mostly hex hashes, UUIDs, base64,
-  paths, or long digit runs, the spoken line collapses to *"<agent> says:
-  there's news, check your screen."* rather than reading a blob out loud. It
-  applies to `speak` too, as a backstop.
+  paths, or long digit runs, the spoken line collapses to *"There's news, check
+  your screen."* rather than reading a blob out loud. It applies to `speak`
+  too, as a backstop.
 - **Length cap.** Spoken lines are truncated at 200 characters. Say one or two
   sentences; the detail belongs in the toast.
 - **The chime steps aside.** It exists to pull your eyes to a toast — if the

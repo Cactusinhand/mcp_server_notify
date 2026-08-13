@@ -1,4 +1,5 @@
 """Tests for the voice layer (local Kokoro TTS)."""
+import numpy as np
 from unittest.mock import patch, MagicMock
 from mcp_server_notify.schemas import NotificationRequest
 from mcp_server_notify.server import NotificationServer
@@ -54,8 +55,13 @@ def test_spoken_with_agent_and_readable_message():
 
 
 def test_spoken_without_agent_and_readable_message():
-    req = NotificationRequest(title="Heads up", message="Something happened.")
-    assert NotificationServer._build_spoken(req) == "Heads up: Heads up. Something happened."
+    req = NotificationRequest(title="Deploy done", message="Something happened.")
+    assert NotificationServer._build_spoken(req) == "Deploy done. Something happened."
+
+
+def test_spoken_unreadable_without_agent_has_no_stock_prefix():
+    req = NotificationRequest(title="done", message="sha256 deadbeefcafebabe0123456789abcdef0123456789abcdef")
+    assert NotificationServer._build_spoken(req) == "There's news, check your screen."
 
 
 def test_spoken_unreadable_uses_placeholder():
@@ -237,7 +243,7 @@ def test_speak_invokes_kokoro_when_enabled():
     server = _bare_server()
 
     fake_kokoro = MagicMock()
-    fake_kokoro.create.return_value = (b"\x00\x00" * 24000, 24000)
+    fake_kokoro.create.return_value = (np.zeros(24000, dtype=np.float32), 24000)
     server._tts_cache = fake_kokoro
 
     with patch("sounddevice.play") as mock_play, \
@@ -260,7 +266,7 @@ def test_speak_uses_explicit_speak_param():
     import time as _time
     server = _bare_server()
     fake_kokoro = MagicMock()
-    fake_kokoro.create.return_value = (b"\x00\x00" * 24000, 24000)
+    fake_kokoro.create.return_value = (np.zeros(24000, dtype=np.float32), 24000)
     server._tts_cache = fake_kokoro
     with patch("sounddevice.play"), patch("sounddevice.wait"):
         server._speak(NotificationRequest(

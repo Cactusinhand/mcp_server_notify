@@ -236,24 +236,30 @@ class NotificationServer:
         title+message, with a hard length cap.
         """
         agent = request.agent  # don't fall back to env default for spoken line
-        prefix = f"{agent} says" if agent else "Heads up"
+        # Named agent introduces itself; otherwise just say the thing. Nobody
+        # needs a stock phrase in front of every line.
+        prefix = f"{agent} says: " if agent else ""
+        unreadable = (
+            f"{agent} says: there's news, check your screen." if agent
+            else "There's news, check your screen."
+        )
 
         # Agent override wins — but still apply the filter so a malformed
         # line doesn't make the local TTS read out a hash.
         if request.speak:
             candidate = request.speak.strip()
             if cls._is_unreadable(candidate):
-                return f"{prefix}: there's news, check your screen."
+                return unreadable
             if len(candidate) > cls.SPOKEN_MAX_CHARS:
                 candidate = candidate[: cls.SPOKEN_MAX_CHARS - 1].rstrip() + "…"
             return candidate
 
         if cls._is_unreadable(request.message):
-            return f"{prefix}: there's news, check your screen."
+            return unreadable
         body = f"{request.title}. {request.message}".strip()
         if len(body) > cls.SPOKEN_MAX_CHARS:
             body = body[: cls.SPOKEN_MAX_CHARS - 1].rstrip() + "…"
-        return f"{prefix}: {body}"
+        return f"{prefix}{body}"
 
     def _will_speak(self, request: NotificationRequest) -> bool:
         """Whether this notification is actually going to be spoken — flags on
@@ -286,9 +292,17 @@ class NotificationServer:
                 if not kokoro:
                     logger.debug("Kokoro unavailable; skipping speech.")
                     return
+                import numpy as np
                 import sounddevice as sd  # local import — only pay when we actually speak
                 samples, sr = kokoro.create(text, voice=voice, speed=1.0)
-                sd.play(samples, sr)
+                # A bigger buffer: the default low-latency stream underruns on a
+                # busy machine, and an underrun sounds like a burst of static.
+                sd.default.latency = "high"
+                # Silence on both ends so the device has something to chew on
+                # while it spins up and winds down — otherwise the stream
+                # starting and stopping mid-waveform clicks.
+                pad = np.zeros(int(sr * 0.08), dtype=samples.dtype)
+                sd.play(np.concatenate([pad, samples, pad]), sr)
                 sd.wait()
                 # sd.wait() returns once the stream is drained, but the device
                 # still holds ~100ms in its own buffer. Without this the CLI's
