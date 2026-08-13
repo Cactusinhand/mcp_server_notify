@@ -1,6 +1,6 @@
 [project]
 name = "mcp-server-notify"
-version = "0.2.0"
+version = "0.3.0"
 description = "MCP Server for system notifications with sound"
 requires-python = ">=3.10"
 dependencies = [
@@ -20,6 +20,8 @@ dependencies = [
 
 [project.scripts]
 mcp-server-notify = "mcp_server_notify:main"
+notify = "mcp_server_notify.cli:notify"
+notify-setup = "mcp_server_notify.cli:setup"
 
 [build-system]
 requires = ["hatchling"]

@@ -12,7 +12,7 @@ import asyncio
 import logging
 
 # Version should match pyproject.toml
-__version__ = "0.1.0"
+__version__ = "0.3.0"
 
 # 显式导出公共接口
 __all__ = [

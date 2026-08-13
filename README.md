@@ -17,6 +17,53 @@ A MCP server that send desktop notifications with sound effect when agent tasks 
 > - Windows toast now shows **"MCP Notify"** (not "Python") via a registered AppUserModelID.
 > - Bundled notification-bot icon (SVG + PNG + ICO) shipped under `src/mcp_server_notify/assets/`.
 > - Per-agent title prefix via the new `agent` parameter (see below).
+> - Optional offline voice layer (Kokoro-82M, local, no keys).
+> - **Two ways to use it**: run the MCP server, or skip it entirely and use the
+>   `notify` CLI + agent skill (see below).
+
+## 🎛️ Two ways to use this
+
+Pick whichever fits how you work — they share the same code, so behaviour is
+identical either way.
+
+| | MCP server | CLI + skill |
+| --- | --- | --- |
+| Setup | register the server with your client | `notify-setup`, nothing to register |
+| Runs | as a background stdio process | only when you call it |
+| Agent calls it via | the `send_notification` tool | a shell command |
+| Good for | clients with MCP support, always-on setups | agents without MCP, cron jobs, your own scripts |
+
+**One-time setup, either way:**
+
+```bash
+pip install mcp-server-notify   # or: uv tool install mcp-server-notify
+notify-setup
+```
+
+`notify-setup` downloads the Kokoro voice model (~330 MB, once, to
+`%LOCALAPPDATA%\kokoro` / `~/.cache/kokoro`), installs the agent skill into
+`~/.claude/skills/notify/` and the opencode skills dir, prints the one-line MCP
+registration command, and fires a test notification so you know it works.
+Skip parts with `--skip-models`, `--skip-skill`, `--no-test`.
+
+### CLI
+
+```bash
+notify "Build complete" "All 42 tests passed"
+notify "Deploy" "prod is live" --agent Sisyphus --speak "Prod is live, we're good."
+notify --say "hey, that long one finally finished"   # speak only, no toast
+notify --list-voices
+```
+
+Flags: `--agent NAME`, `--speak TEXT`, `--voice NAME`, `--no-voice`,
+`--no-sound`, `--timeout SEC`.
+
+### Agent skill
+
+`notify-setup` installs a `SKILL.md` that teaches any Claude Code / opencode
+agent when to notify and how to write a line that sounds spoken rather than
+logged. No MCP server needed — the agent just runs `notify` in its shell.
+The source lives at [`src/mcp_server_notify/assets/SKILL.md`](src/mcp_server_notify/assets/SKILL.md).
 
 ## 🥩 Features
 
@@ -69,20 +116,12 @@ Every notification can also be read out loud through [Kokoro-82M](https://github
 - Per-request `voice: false` overrides an enabled env default.
 - Per-request `voice: true` re-enables speech even if the env disabled it.
 - Voice picker: `MCP_NOTIFY_TTS_VOICE` env var (default `af_bella`). Available: `af_bella`, `af_nicole`, `af_sarah`, `af_sky`, `am_adam`, `am_michael`, `bf_emma`, `bf_isabella`, `bm_george`, `bm_lewis`, plus blends like `af`.
-- Model paths (override with `MCP_NOTIFY_TTS_MODEL` / `MCP_NOTIFY_TTS_VOICES`):
-  - Default model: `D:/Models/kokoro/kokoro-v0_19.onnx`
-  - Default voices: `D:/Models/kokoro/voices.bin`
+- Model paths default to `%LOCALAPPDATA%\kokoro` on Windows, `~/.cache/kokoro`
+  elsewhere. Override either file with `MCP_NOTIFY_TTS_MODEL` /
+  `MCP_NOTIFY_TTS_VOICES` — handy if you already have the model somewhere.
 
-**One-time setup:**
-
-```bash
-mkdir -p D:/Models/kokoro
-curl -L -o D:/Models/kokoro/kokoro-v0_19.onnx \
-  https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files/kokoro-v0_19.onnx
-curl -L -o D:/Models/kokoro/voices.bin \
-  https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files/voices.bin
-pip install kokoro-onnx sounddevice
-```
+**One-time setup:** `notify-setup` (downloads both files, ~330 MB, resumable by
+re-running — a killed download never leaves a half file in place).
 
 If the model files aren't present, speech silently no-ops (the toast still works). Failures during synth or playback are logged at debug level and never block or fail the toast itself.
 

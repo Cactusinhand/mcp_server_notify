@@ -15,6 +15,16 @@ from importlib import resources
 
 logger = logging.getLogger(__name__)
 
+# Kokoro model files live outside the wheel — 325MB has no business in a pip
+# install. `notify-setup` downloads them here; env vars override per file.
+MODEL_URL_BASE = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files"
+MODEL_FILES = {"kokoro-v0_19.onnx": 325525180, "voices.bin": 5758648}
+
+
+def default_model_dir() -> str:
+    base = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), ".cache")
+    return os.path.join(base, "kokoro")
+
 
 class NotificationServer:
     APP_ID = "com.qxzap.mcp_server_notify"
@@ -24,8 +34,6 @@ class NotificationServer:
     TTS_VOICE_ENV = "MCP_NOTIFY_TTS_VOICE"
     TTS_MODEL_PATH_ENV = "MCP_NOTIFY_TTS_MODEL"
     TTS_VOICES_PATH_ENV = "MCP_NOTIFY_TTS_VOICES"
-    TTS_MODEL_PATH_DEFAULT = "D:/Models/kokoro/kokoro-v0_19.onnx"
-    TTS_VOICES_PATH_DEFAULT = "D:/Models/kokoro/voices.bin"
     TTS_VOICE_DEFAULT = "af_bella"
     # Cap the spoken line so latency stays low. Kokoro re-rolls prosody on
     # very long inputs; a 4-second clip is plenty for a heads-up.
@@ -101,6 +109,15 @@ class NotificationServer:
         """Per-request voice flag wins over the env default either way."""
         return bool(request.voice) and self._voice_default_enabled()
 
+    @classmethod
+    def tts_paths(cls) -> tuple[str, str]:
+        """(model, voices) — env override wins, else the shared download dir."""
+        d = default_model_dir()
+        return (
+            os.environ.get(cls.TTS_MODEL_PATH_ENV) or os.path.join(d, "kokoro-v0_19.onnx"),
+            os.environ.get(cls.TTS_VOICES_PATH_ENV) or os.path.join(d, "voices.bin"),
+        )
+
     @property
     def _tts(self):
         """Lazy-loaded Kokoro instance. Built once and reused for the lifetime
@@ -117,10 +134,9 @@ class NotificationServer:
             logger.debug("kokoro_onnx not installed; voice layer disabled.")
             self._tts_cache = False
             return False
-        model = os.environ.get(self.TTS_MODEL_PATH_ENV, self.TTS_MODEL_PATH_DEFAULT)
-        voices = os.environ.get(self.TTS_VOICES_PATH_ENV, self.TTS_VOICES_PATH_DEFAULT)
+        model, voices = self.tts_paths()
         if not (os.path.isfile(model) and os.path.isfile(voices)):
-            logger.debug(f"Kokoro model/voices missing at {model} / {voices}; voice layer disabled.")
+            logger.debug(f"Kokoro model/voices missing at {model} / {voices}; run notify-setup.")
             self._tts_cache = False
             return False
         try:

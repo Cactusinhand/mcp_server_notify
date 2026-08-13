@@ -168,6 +168,23 @@ def test_tts_lazy_load_returns_false_when_models_missing(monkeypatch, tmp_path):
     assert server._tts is False
 
 
+def test_tts_paths_default_to_shared_dir(monkeypatch):
+    monkeypatch.delenv("MCP_NOTIFY_TTS_MODEL", raising=False)
+    monkeypatch.delenv("MCP_NOTIFY_TTS_VOICES", raising=False)
+    model, voices = NotificationServer.tts_paths()
+    assert model.endswith("kokoro-v0_19.onnx")
+    assert voices.endswith("voices.bin")
+    assert "kokoro" in model  # lands in the download dir, not the cwd
+
+
+def test_tts_paths_env_overrides_each_file(monkeypatch):
+    monkeypatch.setenv("MCP_NOTIFY_TTS_MODEL", "/custom/m.onnx")
+    monkeypatch.delenv("MCP_NOTIFY_TTS_VOICES", raising=False)
+    model, voices = NotificationServer.tts_paths()
+    assert model == "/custom/m.onnx"
+    assert voices.endswith("voices.bin")  # the other file still uses the default
+
+
 def test_tts_loads_model_only_once(monkeypatch, tmp_path):
     """Regression: the cache attribute must actually be hit on the 2nd access.
 
