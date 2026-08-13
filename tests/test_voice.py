@@ -271,3 +271,37 @@ def test_speak_uses_explicit_speak_param():
         _time.sleep(0.1)
         text_arg = fake_kokoro.create.call_args[0][0]
         assert text_arg == "A custom crafted line from the agent."
+
+# --- chime vs voice ---------------------------------------------------------
+
+def _server_with_voice(monkeypatch, will_speak: bool):
+    server = _bare_server()
+    server.sound_player = MagicMock()
+    monkeypatch.setattr(NotificationServer, "_will_speak", lambda self, req: will_speak)
+    monkeypatch.setattr(NotificationServer, "_speak", lambda self, req: None)
+    monkeypatch.setattr("mcp_server_notify.server.notification.notify", lambda **kw: None)
+    monkeypatch.setattr(NotificationServer, "_resolve_asset", staticmethod(lambda name: None))
+    monkeypatch.setattr(NotificationServer, "_backend_order",
+                        staticmethod(lambda ap, pl: [pl, ap]))
+    return server
+
+
+def test_chime_skipped_when_the_notification_speaks(monkeypatch):
+    server = _server_with_voice(monkeypatch, will_speak=True)
+    server._send_notification(NotificationRequest(title="t", message="m"))
+    server.sound_player.play.assert_not_called()
+
+
+def test_chime_plays_when_silent(monkeypatch):
+    server = _server_with_voice(monkeypatch, will_speak=False)
+    server._send_notification(NotificationRequest(title="t", message="m"))
+    server.sound_player.play.assert_called_once()
+
+
+def test_will_speak_false_when_model_missing(monkeypatch, tmp_path):
+    monkeypatch.delenv("MCP_NOTIFY_VOICE", raising=False)
+    monkeypatch.setattr("mcp_server_notify.server.load_config", dict)
+    monkeypatch.setenv("MCP_NOTIFY_TTS_MODEL", str(tmp_path / "nope.onnx"))
+    monkeypatch.setenv("MCP_NOTIFY_TTS_VOICES", str(tmp_path / "nope.bin"))
+    server = _bare_server()
+    assert server._will_speak(NotificationRequest(title="t", message="m")) is False

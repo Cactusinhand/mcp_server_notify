@@ -7,6 +7,7 @@ import logging
 import platform
 import re
 import threading
+import time
 from importlib import resources
 
 # The MCP SDK and Apprise are imported where they're used, not here: the CLI
@@ -254,6 +255,16 @@ class NotificationServer:
             body = body[: cls.SPOKEN_MAX_CHARS - 1].rstrip() + "…"
         return f"{prefix}: {body}"
 
+    def _will_speak(self, request: NotificationRequest) -> bool:
+        """Whether this notification is actually going to be spoken — flags on
+        and the model on disk. Checks paths only; loading Kokoro here would put
+        a model load in front of the toast.
+        """
+        if not self._voice_enabled(request):
+            return False
+        model, voices = self.tts_paths()
+        return os.path.isfile(model) and os.path.isfile(voices)
+
     def _speak(self, request: NotificationRequest):
         """Speak through the local Kokoro TTS. Never raises.
 
@@ -279,6 +290,10 @@ class NotificationServer:
                 samples, sr = kokoro.create(text, voice=voice, speed=1.0)
                 sd.play(samples, sr)
                 sd.wait()
+                # sd.wait() returns once the stream is drained, but the device
+                # still holds ~100ms in its own buffer. Without this the CLI's
+                # exit clips the last word.
+                time.sleep(0.3)
             except Exception as e:
                 logger.debug(f"Kokoro speak failed: {e}")
 
@@ -454,7 +469,10 @@ class NotificationServer:
             logger.info(f"通知：{title} - {request.message}")
             print(f"Notification: {title} - {request.message}")
 
-        if request.play_sound:
+        # The chime exists to pull your eyes to a toast. When the notification
+        # speaks, the voice already did that — two attention-getters back to
+        # back is just noise.
+        if request.play_sound and not self._will_speak(request):
             logger.debug("播放通知声音...")
             self.sound_player.play()
 

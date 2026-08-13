@@ -30,6 +30,10 @@ notify-setup                                 # one-time: models + skill install
 Useful flags: `--voice <name>` (per-call voice), `--no-sound` (skip the chime),
 `--timeout <sec>` (toast lifetime, default 10).
 
+The chime only plays for notifications that *don't* speak — the voice is the
+attention-getter when there is one. You don't need `--no-sound` to avoid
+doubling up; that's automatic.
+
 ## When to fire one
 
 Notify when the user has plausibly looked away: a build, test run, deploy, or

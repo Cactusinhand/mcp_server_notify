@@ -161,7 +161,7 @@ Used by both routes — the CLI flags map one-to-one onto these.
 | `agent` | str? | `None` | Which agent is calling. Prefixes the title, spoken aloud. |
 | `speak` | str? | `None` | Your own spoken line. Wins over the auto-composed one. |
 | `voice` | bool | `true` | Speak this notification at all. |
-| `play_sound` | bool | `true` | Play the bundled chime. |
+| `play_sound` | bool | `true` | Play the bundled chime. Skipped automatically when the notification is spoken — see below. |
 | `timeout` | int | `60` (CLI: `10`) | Toast lifetime in seconds. |
 
 ```json
@@ -200,6 +200,10 @@ notification never waits on audio.
   applies to `speak` too, as a backstop.
 - **Length cap.** Spoken lines are truncated at 200 characters. Say one or two
   sentences; the detail belongs in the toast.
+- **The chime steps aside.** It exists to pull your eyes to a toast — if the
+  notification talks, the voice already did that, so the chime is skipped.
+  Silent notifications (`--no-voice`, voice turned off, no model on disk) keep
+  it. `notify --say` never chimes: there's nothing to look at.
 - **Never fatal.** Voice turned off, no model on disk, no audio device, synth
   error — speech silently no-ops and the toast still goes out. (`notify --say`
   is the exception: with nothing to show, it says voice is off and exits 1.)
